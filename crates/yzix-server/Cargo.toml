@@ -1,0 +1,37 @@
+[package]
+name = "yzix-server"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+futures-util = "0.3"
+num_cpus = "1.13"
+oci-spec = "0.5"
+serde = "1.0"
+store-ref-scanner = "0.1"
+thiserror = "1.0"
+toml = "0.5"
+tracing = "0.1"
+tracing-subscriber = "0.3.6"
+
+[dependencies.ciborium]
+version = "0.2"
+features = ["std"]
+
+[dependencies.tokio]
+version = "1.17"
+features = [
+  "fs",
+  "io-util",
+  "macros",
+  "net",
+  "process",
+  "rt",
+  "rt-multi-thread",
+  "signal",
+  "sync"
+]
+
+[dependencies.yzix-proto]
+path = "../yzix-proto"
