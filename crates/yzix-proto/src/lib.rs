@@ -12,21 +12,14 @@ pub struct WorkItem {
     pub outputs: BTreeSet<strwrappers::OutputName>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct TaskId(pub u32);
-
 // maximum message length
 pub type ProtoLen = u32;
 
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub enum Request {
     UnsubscribeAll,
-    LogSub(TaskId, bool),
-    Kill(TaskId),
-    SubmitTask {
-        item: WorkItem,
-        auto_subscribe: bool,
-    },
+    Kill(store::Hash),
+    SubmitTask { item: WorkItem, subscribe2log: bool },
     Upload(store::Dump),
     HasOutHash(store::Hash),
     Download(store::Hash),
@@ -39,7 +32,7 @@ pub enum Response {
     LogError,
     OverflowError,
     Dump(store::Dump),
-    TaskBound(TaskId, TaskBoundResponse),
+    TaskBound(store::Hash, TaskBoundResponse),
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -58,6 +51,9 @@ impl TaskBoundResponse {
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, thiserror::Error)]
 pub enum BuildError {
+    #[error("command was killed by client")]
+    KilledByClient,
+
     #[error("command returned with exit code {0}")]
     Exit(i32),
 
@@ -72,4 +68,20 @@ pub enum BuildError {
 
     #[error("hash collision at {0}")]
     HashCollision(store::Hash),
+
+    #[error("store error: {0}")]
+    Store(#[from] crate::store::Error),
+
+    #[error("unknown error: {0}")]
+    Unknown(String),
+}
+
+impl From<std::io::Error> for BuildError {
+    fn from(x: std::io::Error) -> Self {
+        if let Some(y) = x.raw_os_error() {
+            BuildError::Io(y)
+        } else {
+            BuildError::Unknown(x.to_string())
+        }
+    }
 }

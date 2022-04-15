@@ -1,9 +1,10 @@
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
-use tokio::sync::{Mutex, broadcast, mpsc};
-use yzix_proto::{ProtoLen, TaskId, TaskBoundResponse, WorkItem, store};
 use std::collections::HashSet;
 use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio::sync::{broadcast, mpsc};
+use tokio::task::block_in_place;
+use yzix_proto::{store, ProtoLen, TaskBoundResponse};
 
 pub struct Request {
     pub inner: RequestKind,
@@ -11,10 +12,10 @@ pub struct Request {
 }
 
 pub enum RequestKind {
-    Kill(TaskId),
+    Kill(store::Hash),
     SubmitTask {
-        item: WorkItem,
-        subscribe: Option<mpsc::Sender<TaskId>>,
+        item: crate::FullWorkItem,
+        subscribe: Option<mpsc::Sender<broadcast::Receiver<(store::Hash, Arc<TaskBoundResponse>)>>>,
     },
     Upload(store::Dump),
     HasOutHash(store::Hash),
@@ -23,9 +24,7 @@ pub enum RequestKind {
 
 pub async fn handle_client(
     // channel for requests from client to server
-    reqs: broadcast::Sender<Request>,
-    // channel for task build log messages
-    mut logs: broadcast::Receiver<(TaskId, Arc<TaskBoundResponse>)>,
+    reqs: mpsc::Sender<Request>,
     // the associated client tcp stream
     mut stream: TcpStream,
     // valid bearer tokens for auth
@@ -58,10 +57,10 @@ pub async fn handle_client(
     // normal comm
     let (stream, mut stream2) = stream.split();
 
-    let (subscribe_s, mut subscribe_r) = mpsc::channel::<TaskId>(1000);
+    let (subscribe_s, mut subscribe_r) = mpsc::channel(1000);
     let (resp_s, mut resp_r) = mpsc::channel(1000);
-    let logsubs = Arc::new(Mutex::new(HashSet::<TaskId>::new()));
-    let logsubs2 = logsubs.clone();
+    let unsubscr = Arc::new(tokio::sync::Notify::new());
+    let unsubscr2 = unsubscr.clone();
 
     let handle_input = async move {
         let mut buf: Vec<u8> = Vec::new();
@@ -95,28 +94,35 @@ pub async fn handle_client(
                 }
             };
             let req = match req {
-                Req::UnsubscribeAll => { logsubs.lock().await.clear(); None },
-                Req::LogSub(tid, false) => { logsubs.lock().await.remove(&tid); None },
-                Req::LogSub(tid, true) => { logsubs.lock().await.insert(tid); None },
-                Req::SubmitTask { item, auto_subscribe } =>
-                    Some(RequestKind::SubmitTask {
-                        item,
-                        subscribe: if auto_subscribe {
-                            Some(subscribe_s.clone())
-                        } else {
-                            None
-                        },
-                    }),
+                Req::UnsubscribeAll => {
+                    unsubscr.notify_one();
+                    None
+                }
+                Req::SubmitTask {
+                    item,
+                    subscribe2log,
+                } => Some(RequestKind::SubmitTask {
+                    item: block_in_place(|| item.into()),
+                    subscribe: if subscribe2log {
+                        Some(subscribe_s.clone())
+                    } else {
+                        None
+                    },
+                }),
                 Req::Kill(tid) => Some(RequestKind::Kill(tid)),
                 Req::Upload(d) => Some(RequestKind::Upload(d)),
                 Req::HasOutHash(h) => Some(RequestKind::HasOutHash(h)),
                 Req::Download(h) => Some(RequestKind::Download(h)),
             };
             if let Some(inner) = req {
-                if reqs.send(Request {
-                    inner,
-                    resp: resp_s.clone(),
-                }).is_err() {
+                if reqs
+                    .send(Request {
+                        inner,
+                        resp: resp_s.clone(),
+                    })
+                    .await
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -125,31 +131,36 @@ pub async fn handle_client(
 
     let handle_output = async move {
         let mut buf = Vec::<u8>::new();
+        // we spawn a forwarder task for each subscribed task
+        let (mut log_s, mut log_r) = mpsc::channel(1000);
         loop {
             use yzix_proto::Response;
-            use broadcast::error::RecvError::Closed;
             let mut msg = Option::<Response>::None;
             tokio::select! {
                 biased;
 
-                v = subscribe_r.recv() => if let Some(tid) = v {
-                    logsubs2.lock().await.insert(tid);
+                v = subscribe_r.recv() => if let Some(mut tbrchan) = v {
+                    let log2_s = log_s.clone();
+                    tokio::spawn(async move {
+                        while let Ok(x) = tbrchan.recv().await {
+                            if log2_s.send(x).await.is_err() {
+                                break;
+                            }
+                        }
+                    });
                 } else {
                     break;
                 },
 
-                v = logs.recv() => match v {
-                    Err(Closed) => break,
-                    Err(_) => msg = Some(Response::LogError),
-                    Ok((tid, tbr)) => {
-                        let mut ls = logsubs2.lock().await;
-                        if ls.contains(&tid) {
-                            if tbr.task_finished() {
-                                ls.remove(&tid);
-                            }
-                            msg = Some(Response::TaskBound(tid, (*tbr).clone()));
-                        }
-                    },
+                () = unsubscr2.notified() => {
+                    let (log2_s, log2_r) = mpsc::channel(1000);
+                    log_s = log2_s;
+                    log_r = log2_r;
+                },
+
+                v = log_r.recv() => {
+                    let (tid, tbr) = v.unwrap();
+                    msg = Some(Response::TaskBound(tid, (*tbr).clone()));
                 },
 
                 v = resp_r.recv() => match v {

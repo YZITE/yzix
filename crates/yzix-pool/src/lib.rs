@@ -14,20 +14,36 @@ impl<T> Default for Pool<T> {
     }
 }
 
-impl<T: Send> Pool<T> {
-    #[inline]
-    pub async fn pop(&self) -> T {
-        self.pop
-            .recv()
-            .await
-            .expect("unable to receive from pool")
-    }
+pub struct PoolGuard<T> {
+    push: Sender<T>,
+    value: Option<T>,
+}
+
+impl<T> std::ops::Deref for PoolGuard<T> {
+    type Target = T;
 
     #[inline]
-    pub async fn push(&self, x: T) {
-        self.push
-            .send(x)
-            .await
-            .expect("unable to send to pool")
+    fn deref(&self) -> &T {
+        self.value.as_ref().unwrap()
+    }
+}
+
+impl<T> Drop for PoolGuard<T> {
+    fn drop(&mut self) {
+        let value = self.value.take().unwrap();
+        self.push.try_send(value).unwrap();
+    }
+}
+
+impl<T: Send> Pool<T> {
+    pub async fn get(&self) -> PoolGuard<T> {
+        PoolGuard {
+            push: self.push.clone(),
+            value: Some(self.pop.recv().await.expect("unable to receive from pool")),
+        }
+    }
+
+    pub async fn push(&self, value: T) {
+        self.push.send(value).await.expect("unable to send to pool");
     }
 }
