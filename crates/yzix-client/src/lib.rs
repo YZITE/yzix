@@ -1,8 +1,8 @@
 use futures_util::{SinkExt as _, StreamExt as _};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
+pub use yzix_proto::{store::Dump, store::Hash as StoreHash, Response, TaskBoundResponse};
 use yzix_proto::{WbsClientSide, WrappedByteStream};
-pub use yzix_proto::{store::Hash as StoreHash, store::Dump, Response, TaskBoundResponse};
 
 #[derive(Clone)]
 pub struct Driver {
