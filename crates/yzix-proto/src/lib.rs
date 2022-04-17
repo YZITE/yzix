@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use std::collections::{BTreeMap, BTreeSet};
 
+mod codec;
+pub use codec::*;
+
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct WorkItem {
     pub args: Vec<String>,
@@ -14,6 +17,7 @@ pub struct WorkItem {
 
 // maximum message length
 pub type ProtoLen = u32;
+pub const NULL_LEN: [u8; std::mem::size_of::<ProtoLen>()] = [0u8; std::mem::size_of::<ProtoLen>()];
 
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub enum Request {

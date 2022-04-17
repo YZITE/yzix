@@ -1,10 +1,11 @@
+use futures_util::{StreamExt as _, SinkExt as _};
 use std::collections::HashSet;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt as _};
 use tokio::net::TcpStream;
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::block_in_place;
-use yzix_proto::{store, ProtoLen, TaskBoundResponse};
+use yzix_proto::{store, ProtoLen, TaskBoundResponse, WrappedByteStream, WbsServerSide};
 
 pub struct Request {
     pub inner: RequestKind,
@@ -55,7 +56,8 @@ pub async fn handle_client(
     }
 
     // normal comm
-    let (stream, mut stream2) = stream.split();
+    let wbs: WbsServerSide<_> = WrappedByteStream::new(stream);
+    let (mut sink, mut stream) = wbs.split();
 
     let (subscribe_s, mut subscribe_r) = mpsc::channel(1000);
     let (resp_s, mut resp_r) = mpsc::channel(1000);
@@ -63,35 +65,15 @@ pub async fn handle_client(
     let unsubscr2 = unsubscr.clone();
 
     let handle_input = async move {
-        let mut buf: Vec<u8> = Vec::new();
-        let mut stream = tokio::io::BufReader::new(stream);
-        while stream.read_exact(&mut lenbuf).await.is_ok() {
-            buf.clear();
-            let len = ProtoLen::from_le_bytes(lenbuf);
-            // TODO: make sure that the length isn't too big
-            buf.resize(len.try_into().unwrap(), 0);
-            if stream.read_exact(&mut buf[..]).await.is_err() {
-                break;
-            }
-            let val: ciborium::value::Value = match ciborium::de::from_reader(&buf[..]) {
-                Ok(x) => x,
-                Err(e) => {
-                    // TODO: report error to client, maybe?
-                    // this can happen either when the serialization format
-                    // between client and server mismatches,
-                    // or when we run into a ciborium bug.
-                    tracing::error!("CBOR: {}", e);
-                    break;
-                }
-            };
+        loop {
             use yzix_proto::Request as Req;
-            let req: Req = match val.deserialized() {
-                Ok(x) => x,
-                Err(e) => {
-                    tracing::error!("CBOR: {}", e);
-                    tracing::debug!("CBOR: {:#?}", val);
+            let req: Req = match stream.next().await {
+                Some(Ok(x)) => x,
+                Some(Err(e)) => {
+                    tracing::error!("client comm aborted (recv error): {}", e);
                     break;
-                }
+                },
+                None => break,
             };
             let req = match req {
                 Req::UnsubscribeAll => {
@@ -177,25 +159,15 @@ pub async fn handle_client(
                 continue;
             };
 
-            if let Err(e) = ciborium::ser::into_writer(&msg, &mut buf) {
-                // TODO: handle error
-                tracing::error!("CBOR: {}", e);
-            } else {
-                if stream2
-                    .write_all(&ProtoLen::to_le_bytes(buf.len().try_into().unwrap()))
-                    .await
-                    .is_err()
-                {
-                    break;
-                }
-                if stream2.write_all(&buf[..]).await.is_err() {
-                    break;
-                }
-                if stream2.flush().await.is_err() {
+            if let Err(e) = sink.send(msg).await {
+                tracing::error!("client comm error (while sending): {}", e);
+                if let ciborium::ser::Error::Io(_) = e {
                     break;
                 }
             }
         }
+
+        let _ = sink.close().await;
     };
 
     tokio::join!(handle_input, handle_output);
