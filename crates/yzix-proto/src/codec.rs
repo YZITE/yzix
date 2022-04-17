@@ -7,6 +7,8 @@ use futures_sink::Sink;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{Framed, LengthDelimitedCodec as Ldc};
 
+pub use ciborium;
+
 #[must_use = "streams/sinks do nothing unless polled"]
 #[derive(Debug)]
 pub struct WrappedByteStream<T: Unpin, In, Out>(Framed<T, Ldc>, PhantomData<fn(In) -> Out>);

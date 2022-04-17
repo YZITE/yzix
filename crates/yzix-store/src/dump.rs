@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
 /// sort-of emulation of NAR using CBOR
-#[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase", tag = "type")]
 pub enum Dump {
     Regular { executable: bool, contents: Vec<u8> },

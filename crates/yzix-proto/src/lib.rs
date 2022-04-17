@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 mod codec;
 pub use codec::*;
 
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct WorkItem {
     pub args: Vec<String>,
     pub envs: BTreeMap<String, String>,
@@ -19,7 +19,7 @@ pub struct WorkItem {
 pub type ProtoLen = u32;
 pub const NULL_LEN: [u8; std::mem::size_of::<ProtoLen>()] = [0u8; std::mem::size_of::<ProtoLen>()];
 
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Request {
     UnsubscribeAll,
     Kill(store::Hash),
@@ -29,12 +29,11 @@ pub enum Request {
     Download(store::Hash),
 }
 
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Response {
     Ok,
     False,
     LogError,
-    OverflowError,
     Dump(store::Dump),
     TaskBound(store::Hash, TaskBoundResponse),
 }

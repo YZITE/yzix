@@ -6,7 +6,6 @@ license = "Apache-2.0"
 
 [dependencies]
 camino = "1.0"
-ciborium = "0.2"
 num_cpus = "1.13"
 oci-spec = "0.5"
 rand = "0.8"

@@ -15,7 +15,7 @@ impl From<yzix_proto::WorkItem> for FullWorkItem {
 
         // to make this more effective, serialize just once
         let mut ser = Vec::new();
-        ciborium::ser::into_writer(&inner, &mut ser).unwrap();
+        yzix_proto::ciborium::ser::into_writer(&inner, &mut ser).unwrap();
         let mut hasher = StoreHash::get_hasher();
         hasher.update(&ser[..]);
         let inhash = StoreHash::finalize_hasher(hasher);
