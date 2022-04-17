@@ -193,29 +193,68 @@ async fn main() {
                                         let _guard = span.enter();
                                         let mut ret = BTreeMap::new();
                                         for (outname, (outhash, dump)) in x {
-                                            let span = span!(Level::ERROR, "output", %outname, %outhash);
+                                            let realhash = StoreHash::hash_complex::<Dump>(&dump);
+                                            let span = span!(Level::ERROR, "output", %outname, %outhash, %realhash);
                                             let _guard = span.enter();
-                                            let dstpath = config2
+                                            let realdstpath = config2
                                                 .store_path
-                                                .join(&outhash.to_string())
+                                                .join(&realhash.to_string())
                                                 .into_std_path_buf();
-                                            // TODO: auto-repair? we can't do that if ( outhash != hash(dump) )
-                                            if store_locks.lock().unwrap().insert(outhash) && !dstpath.exists() {
+                                            if store_locks.lock().unwrap().insert(realhash) && !realdstpath.exists() {
                                                 tracing::debug!("dumping to store ...");
                                                 if let Err(e) = dump.write_to_path(
-                                                    &dstpath,
+                                                    &realdstpath,
                                                     DumpFlags {
                                                         force: true,
                                                         make_readonly: true,
                                                     },
                                                 ) {
-                                                    tracing::error!("{}", e);
-                                                    store_locks.lock().unwrap().remove(&outhash);
+                                                    tracing::error!("dumping to store failed: {}", e);
+                                                    store_locks.lock().unwrap().remove(&realhash);
                                                     return TaskBoundResponse::BuildError(e.into());
                                                 }
-                                                store_locks.lock().unwrap().remove(&outhash);
+                                                store_locks.lock().unwrap().remove(&realhash);
                                             } else {
                                                 tracing::debug!("output already present");
+                                            }
+                                            if realhash != outhash {
+                                                let dstpath = config2
+                                                    .store_path
+                                                    .join(&outhash.to_string())
+                                                    .into_std_path_buf();
+                                                tracing::debug!("create symlink to handle self-references");
+                                                // TODO: handle mismatching symlink targets
+                                                use std::io::{Error, ErrorKind};
+                                                if let Err(e) = std::os::unix::fs::symlink(&realdstpath, &dstpath) {
+                                                    if e.kind() == std::io::ErrorKind::AlreadyExists {
+                                                        match std::fs::read_link(&dstpath) {
+                                                            Ok(oldtrg) if oldtrg == realdstpath => {}
+                                                            Ok(orig_target) => {
+                                                                tracing::error!(
+                                                                    ?orig_target,
+                                                                    ?realdstpath,
+                                                                    "self-ref CA path differs"
+                                                                );
+                                                                return TaskBoundResponse::BuildError(
+                                                                    Error::from(ErrorKind::AlreadyExists).into()
+                                                                );
+                                                            }
+                                                            Err(e) => {
+                                                                tracing::error!(
+                                                                    "checking self-reference symlink failed: {}",
+                                                                    e
+                                                                );
+                                                                return TaskBoundResponse::BuildError(e.into());
+                                                            }
+                                                        }
+                                                    } else {
+                                                        tracing::error!(
+                                                            "creating self-reference symlink failed: {}",
+                                                            e
+                                                        );
+                                                        return TaskBoundResponse::BuildError(e.into());
+                                                    }
+                                                }
                                             }
                                             ret.insert(outname, outhash);
                                         }

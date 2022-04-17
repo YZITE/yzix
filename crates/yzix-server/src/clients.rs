@@ -1,11 +1,11 @@
-use futures_util::{StreamExt as _, SinkExt as _};
+use futures_util::{SinkExt as _, StreamExt as _};
 use std::collections::HashSet;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt as _};
+use tokio::io::AsyncReadExt as _;
 use tokio::net::TcpStream;
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::block_in_place;
-use yzix_proto::{store, ProtoLen, TaskBoundResponse, WrappedByteStream, WbsServerSide};
+use yzix_proto::{store, ProtoLen, TaskBoundResponse, WbsServerSide, WrappedByteStream};
 
 pub struct Request {
     pub inner: RequestKind,
@@ -72,7 +72,7 @@ pub async fn handle_client(
                 Some(Err(e)) => {
                     tracing::error!("client comm aborted (recv error): {}", e);
                     break;
-                },
+                }
                 None => break,
             };
             let req = match req {
