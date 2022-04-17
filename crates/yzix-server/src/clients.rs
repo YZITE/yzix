@@ -25,7 +25,7 @@ pub enum RequestKind {
 pub async fn handle_client(
     config: Arc<crate::ServerConfig>,
     // channel for requests from client to server
-    reqs: mpsc::Sender<Request>,
+    reqs: mpsc::UnboundedSender<Request>,
     // the associated client tcp stream
     mut stream: TcpStream,
 ) {
@@ -100,7 +100,6 @@ pub async fn handle_client(
                         inner,
                         resp: resp_s.clone(),
                     })
-                    .await
                     .is_err()
                 {
                     break;

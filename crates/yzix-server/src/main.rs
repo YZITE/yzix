@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::block_in_place;
-use tracing::{debug, error, info, span, Level};
+use tracing::{debug, error, info, span, trace, warn, Level};
 use yzix_pool::Pool;
 use yzix_proto::{
     self, store::Dump, store::Flags as DumpFlags, store::Hash as StoreHash, Response,
@@ -78,7 +78,7 @@ async fn main() {
 
     // validate config
 
-    if &config.store_path == camino::Utf8Path::new("") {
+    if config.store_path == camino::Utf8Path::new("") {
         eprintln!("yzix-server: CONFIG ERROR: store_path is invalid");
         std::process::exit(1);
     }
@@ -123,10 +123,10 @@ async fn main() {
         .await
         .expect("unable to bind socket");
 
-    let (client_reqs, mut client_reqr) = mpsc::channel(1000);
+    let (client_reqs, mut client_reqr) = mpsc::unbounded_channel();
 
     // inhash-locking, to prevent racing a workitem with itself
-    let (task_clup_s, mut task_clup_r) = mpsc::channel(1000);
+    let (task_clup_s, mut task_clup_r) = mpsc::unbounded_channel();
     let mut tasks = HashMap::<StoreHash, Task>::new();
 
     // outhash-locking, to prevent racing in the store
@@ -210,12 +210,17 @@ async fn main() {
                             // task should get registered
                             hold.notified().await;
                             let _ = hold;
+                            trace!(%inhash, "determine store closure...");
                             // TODO: how should we handle missing store paths?
                             block_in_place(|| determine_store_closure(&config2.store_path, &mut item.refs));
                             let res = {
+                                trace!(%inhash, "acquire container...");
                                 let containername = containerpool.get().await;
+                                trace!(%inhash, "start build in container {}", *containername);
+                                trace!(%inhash, "cmdline = ");
                                 handle_process(&*config2, &logs2, &*containername, item).await
                             };
+                            trace!(%inhash, "build finished ({})", if res.is_ok() { "successful" } else { "failed" });
                             let msg = match res {
                                 Ok(x) => {
                                     tokio::task::spawn_blocking(move || {
@@ -291,10 +296,15 @@ async fn main() {
                                         TaskBoundResponse::BuildSuccess(ret)
                                     }).await.unwrap()
                                 },
-                                Err(e) => TaskBoundResponse::BuildError(e),
+                                Err(e) => {
+                                    warn!(%inhash, "build failed with error {}", e);
+                                    TaskBoundResponse::BuildError(e)
+                                },
                             };
+                            trace!(%inhash, "send result {:?}", msg);
                             let _: Result<_, _> = logs2.send((inhash, Arc::new(msg)));
-                            let _: Result<_, _> = task_clup_s.send(inhash).await;
+                            trace!(%inhash, "schedule job cleanup");
+                            let _: Result<_, _> = task_clup_s.send(inhash);
                         });
                         tasks.insert(inhash, Task {
                             handle,
