@@ -107,7 +107,15 @@ async fn build_linux_ocirt_spec(
                 );
                 tokio::fs::create_dir(dpath).await?;
             } else {
-                tokio::fs::hard_link(spath, dpath).await?;
+                // we don't use hard links (for now)
+                // because that would require us to put the fake store
+                // in a subdirectory of the real store,
+                // and would require us to write the (to-be-rewritten)
+                // output paths there, too, which is bad for SSDs...
+                //
+                // side note: nixpkgs builds often copy whole source trees...
+                // so this probably isn't too bad.
+                tokio::fs::copy(spath, dpath).await?;
             }
         }
     }
