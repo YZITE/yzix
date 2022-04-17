@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::block_in_place;
-use tracing::{span, Level};
+use tracing::{span, Level, debug, error, info};
 use yzix_pool::Pool;
 use yzix_proto::{
     self, store::Dump, store::Flags as DumpFlags, store::Hash as StoreHash, Response,
@@ -112,7 +112,7 @@ async fn main() {
             client = listener.accept() => {
                 match client {
                     Ok((stream, addr)) => {
-                        tracing::info!("new connection from {:?}", addr);
+                        info!("new connection from {:?}", addr);
                         tokio::spawn(clients::handle_client(
                             client_reqs.clone(),
                             stream,
@@ -120,7 +120,7 @@ async fn main() {
                         ));
                     }
                     Err(e) => {
-                        tracing::error!("listener'accept() failed: {:?}", e);
+                        error!("listener'accept() failed: {:?}", e);
                     }
                 }
             },
@@ -201,7 +201,7 @@ async fn main() {
                                                 .join(&realhash.to_string())
                                                 .into_std_path_buf();
                                             if store_locks.lock().unwrap().insert(realhash) && !realdstpath.exists() {
-                                                tracing::debug!("dumping to store ...");
+                                                debug!("dumping to store ...");
                                                 if let Err(e) = dump.write_to_path(
                                                     &realdstpath,
                                                     DumpFlags {
@@ -209,20 +209,20 @@ async fn main() {
                                                         make_readonly: true,
                                                     },
                                                 ) {
-                                                    tracing::error!("dumping to store failed: {}", e);
+                                                    error!("dumping to store failed: {}", e);
                                                     store_locks.lock().unwrap().remove(&realhash);
                                                     return TaskBoundResponse::BuildError(e.into());
                                                 }
                                                 store_locks.lock().unwrap().remove(&realhash);
                                             } else {
-                                                tracing::debug!("output already present");
+                                                debug!("output already present");
                                             }
                                             if realhash != outhash {
                                                 let dstpath = config2
                                                     .store_path
                                                     .join(&outhash.to_string())
                                                     .into_std_path_buf();
-                                                tracing::debug!("create symlink to handle self-references");
+                                                debug!("create symlink to handle self-references");
                                                 // TODO: handle mismatching symlink targets
                                                 use std::io::{Error, ErrorKind};
                                                 if let Err(e) = std::os::unix::fs::symlink(&realdstpath, &dstpath) {
@@ -230,7 +230,7 @@ async fn main() {
                                                         match std::fs::read_link(&dstpath) {
                                                             Ok(oldtrg) if oldtrg == realdstpath => {}
                                                             Ok(orig_target) => {
-                                                                tracing::error!(
+                                                                error!(
                                                                     ?orig_target,
                                                                     ?realdstpath,
                                                                     "self-ref CA path differs"
@@ -240,7 +240,7 @@ async fn main() {
                                                                 );
                                                             }
                                                             Err(e) => {
-                                                                tracing::error!(
+                                                                error!(
                                                                     "checking self-reference symlink failed: {}",
                                                                     e
                                                                 );
@@ -248,10 +248,7 @@ async fn main() {
                                                             }
                                                         }
                                                     } else {
-                                                        tracing::error!(
-                                                            "creating self-reference symlink failed: {}",
-                                                            e
-                                                        );
+                                                        error!("creating self-reference symlink failed: {}", e);
                                                         return TaskBoundResponse::BuildError(e.into());
                                                     }
                                                 }
@@ -327,7 +324,7 @@ async fn main() {
             },
 
             Some(tid) = task_clup_r.recv() => {
-                tracing::debug!("reaping task {}", tid);
+                debug!("reaping task {}", tid);
                 tasks.remove(&tid);
             },
         }
