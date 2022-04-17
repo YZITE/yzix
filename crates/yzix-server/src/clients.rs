@@ -1,5 +1,4 @@
 use futures_util::{SinkExt as _, StreamExt as _};
-use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt as _;
 use tokio::net::TcpStream;
@@ -24,12 +23,11 @@ pub enum RequestKind {
 }
 
 pub async fn handle_client(
+    config: Arc<crate::ServerConfig>,
     // channel for requests from client to server
     reqs: mpsc::Sender<Request>,
     // the associated client tcp stream
     mut stream: TcpStream,
-    // valid bearer tokens for auth
-    valid_bearer_tokens: Arc<HashSet<String>>,
 ) {
     // auth
     let mut lenbuf = [0u8; std::mem::size_of::<ProtoLen>()];
@@ -50,7 +48,7 @@ pub async fn handle_client(
             Ok(x) => x,
             Err(_) => return,
         };
-        if !valid_bearer_tokens.contains(&bearer_token) {
+        if !config.bearer_tokens.contains(&bearer_token) {
             return;
         }
     }
@@ -84,7 +82,7 @@ pub async fn handle_client(
                     item,
                     subscribe2log,
                 } => Some(RequestKind::SubmitTask {
-                    item: block_in_place(|| item.into()),
+                    item: block_in_place(|| crate::FullWorkItem::new(item, &config.store_path)),
                     subscribe: if subscribe2log {
                         Some(subscribe_s.clone())
                     } else {

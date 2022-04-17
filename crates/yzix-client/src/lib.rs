@@ -1,8 +1,7 @@
 use futures_util::{SinkExt as _, StreamExt as _};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
-pub use yzix_proto::{store::Dump, store::Hash as StoreHash, Response, TaskBoundResponse};
-use yzix_proto::{WbsClientSide, WrappedByteStream};
+pub use yzix_proto::*;
 
 #[derive(Clone)]
 pub struct Driver {
@@ -12,35 +11,35 @@ pub struct Driver {
 #[derive(Debug)]
 enum WorkMessage {
     SubmitTask {
-        data: yzix_proto::WorkItem,
-        answ_chan: oneshot::Sender<yzix_proto::TaskBoundResponse>,
+        data: WorkItem,
+        answ_chan: oneshot::Sender<TaskBoundResponse>,
     },
     Upload {
-        data: yzix_proto::store::Dump,
-        answ_chan: oneshot::Sender<yzix_proto::Response>,
+        data: store::Dump,
+        answ_chan: oneshot::Sender<Response>,
     },
     HasOutHash {
-        data: StoreHash,
-        answ_chan: oneshot::Sender<yzix_proto::Response>,
+        data: store::Hash,
+        answ_chan: oneshot::Sender<Response>,
     },
     Download {
-        data: StoreHash,
-        answ_chan: oneshot::Sender<yzix_proto::Response>,
+        data: store::Hash,
+        answ_chan: oneshot::Sender<Response>,
     },
 }
 
 /// represents an in-flight server request, which expects a sequential response.
 #[derive(Debug)]
 struct Inflight {
-    orig_req: yzix_proto::Request,
-    answ_chan: oneshot::Sender<yzix_proto::Response>,
+    orig_req: Request,
+    answ_chan: oneshot::Sender<Response>,
 }
 
 /// server-side active task
 // NOTE: `Upload` and `Download` can also produce `TaskBound` responses,
 // but still need to be handled sequentially
 struct RSTask {
-    answ_chans: Vec<oneshot::Sender<yzix_proto::TaskBoundResponse>>,
+    answ_chans: Vec<oneshot::Sender<TaskBoundResponse>>,
 }
 
 impl Driver {
@@ -53,8 +52,8 @@ impl Driver {
         tokio::spawn(async move {
             let mut backlog = std::collections::VecDeque::new();
             let mut inflight_info: Option<Inflight> = None;
-            let mut running = std::collections::HashMap::<StoreHash, RSTask>::new();
-            use yzix_proto::{Request as Req, Response as Resp, TaskBoundResponse as Tbr};
+            let mut running = std::collections::HashMap::<store::Hash, RSTask>::new();
+            use {Request as Req, Response as Resp, TaskBoundResponse as Tbr};
             loop {
                 tokio::select!(
                     msg = wchan_r.recv() => {
@@ -66,7 +65,7 @@ impl Driver {
                         match msg {
                             WorkMessage::SubmitTask { data, answ_chan } => {
                                 use std::collections::hash_map::Entry;
-                                let tid = StoreHash::hash_complex(&data);
+                                let tid = store::Hash::hash_complex(&data);
                                 tracing::info!("{}: submitted", tid);
                                 if let Err(e) = wbs.send(
                                     Req::SubmitTask { item: data, subscribe2log: true }
@@ -132,7 +131,7 @@ impl Driver {
                                 if let Some(x) = inflight_info.take() {
                                     let tfmt = match x.orig_req {
                                         Req::UnsubscribeAll => unreachable!(),
-                                        Req::Upload(d) => format!("Upload(...@ {})", StoreHash::hash_complex(&d)),
+                                        Req::Upload(d) => format!("Upload(...@ {})", store::Hash::hash_complex(&d)),
                                         _ => format!("{:?}", x.orig_req),
                                     };
                                     tracing::debug!("{}: {} -> {:?}", tid, tfmt, tbr);
@@ -151,7 +150,7 @@ impl Driver {
                                 if let Some(x) = inflight_info.take() {
                                     let tfmt = match x.orig_req {
                                         Req::UnsubscribeAll => unreachable!(),
-                                        Req::Upload(d) => format!("Upload(...@ {})", StoreHash::hash_complex(&d)),
+                                        Req::Upload(d) => format!("Upload(...@ {})", store::Hash::hash_complex(&d)),
                                         _ => format!("{:?}", x.orig_req),
                                     };
                                     tracing::debug!("{} -> {:?}", tfmt, msg);
@@ -183,7 +182,7 @@ impl Driver {
         Self { wchan_s }
     }
 
-    pub async fn run_task(&self, data: yzix_proto::WorkItem) -> yzix_proto::TaskBoundResponse {
+    pub async fn run_task(&self, data: WorkItem) -> TaskBoundResponse {
         let (answ_chan, answ_get) = oneshot::channel();
         self.wchan_s
             .send(WorkMessage::SubmitTask { data, answ_chan })
@@ -191,7 +190,7 @@ impl Driver {
         answ_get.await.unwrap()
     }
 
-    pub async fn upload(&self, data: yzix_proto::store::Dump) -> yzix_proto::Response {
+    pub async fn upload(&self, data: store::Dump) -> Response {
         let (answ_chan, answ_get) = oneshot::channel();
         self.wchan_s
             .send(WorkMessage::Upload { data, answ_chan })
@@ -199,7 +198,7 @@ impl Driver {
         answ_get.await.unwrap()
     }
 
-    pub async fn has_out_hash(&self, data: StoreHash) -> yzix_proto::Response {
+    pub async fn has_out_hash(&self, data: store::Hash) -> Response {
         let (answ_chan, answ_get) = oneshot::channel();
         self.wchan_s
             .send(WorkMessage::HasOutHash { data, answ_chan })
@@ -207,7 +206,7 @@ impl Driver {
         answ_get.await.unwrap()
     }
 
-    pub async fn download(&self, data: StoreHash) -> yzix_proto::Response {
+    pub async fn download(&self, data: store::Hash) -> Response {
         let (answ_chan, answ_get) = oneshot::channel();
         self.wchan_s
             .send(WorkMessage::Download { data, answ_chan })
@@ -219,16 +218,12 @@ impl Driver {
 pub async fn do_auth(
     stream: &mut TcpStream,
     bearer_token: &str,
-) -> Result<(), yzix_proto::ciborium::ser::Error<std::io::Error>> {
+) -> Result<(), ciborium::ser::Error<std::io::Error>> {
     use tokio::io::AsyncWriteExt;
     let mut buf = Vec::<u8>::new();
-    yzix_proto::ciborium::ser::into_writer(bearer_token, &mut buf)?;
+    ciborium::ser::into_writer(bearer_token, &mut buf)?;
     stream
-        .write_all(
-            &yzix_proto::ProtoLen::try_from(buf.len())
-                .unwrap()
-                .to_le_bytes()[..],
-        )
+        .write_all(&ProtoLen::try_from(buf.len()).unwrap().to_le_bytes()[..])
         .await?;
     stream.write_all(&buf[..]).await?;
     Ok(())

@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::block_in_place;
-use tracing::{span, Level, debug, error, info};
+use tracing::{debug, error, info, span, Level};
 use yzix_pool::Pool;
 use yzix_proto::{
     self, store::Dump, store::Flags as DumpFlags, store::Hash as StoreHash, Response,
@@ -64,10 +64,41 @@ async fn main() {
         if args.next().is_some() || arg == "--help" {
             inv_invoc();
         }
-        toml::de::from_slice(&std::fs::read(arg).expect("unable to read supplied config file"))
-            .expect("unable to parse supplied config file")
+        match toml::de::from_slice(
+            &std::fs::read(arg).expect("unable to read supplied config file"),
+        ) {
+            Ok(x) => x,
+            Err(e) => {
+                eprintln!("yzix-server: CONFIG ERROR: {}", e);
+                std::process::exit(1);
+            }
+        }
     };
     let config = Arc::new(config);
+
+    // validate config
+
+    if &config.store_path == camino::Utf8Path::new("") {
+        eprintln!("yzix-server: CONFIG ERROR: store_path is invalid");
+        std::process::exit(1);
+    }
+
+    if config.container_runner.is_empty() {
+        eprintln!("yzix-server: CONFIG ERROR: container_runner is invalid");
+        std::process::exit(1);
+    }
+
+    if config.socket_bind.is_empty() {
+        eprintln!("yzix-server: CONFIG ERROR: socket_bind is invalid");
+        std::process::exit(1);
+    }
+
+    if config.bearer_tokens.is_empty() {
+        eprintln!("yzix-server: CONFIG ERROR: bearer_tokens is empty");
+        std::process::exit(1);
+    }
+
+    // continue setup
 
     std::fs::create_dir_all(&config.store_path).expect("unable to create store dir");
 
@@ -92,7 +123,6 @@ async fn main() {
         .await
         .expect("unable to bind socket");
 
-    let valid_bearer_tokens = Arc::new(config.bearer_tokens.clone());
     let (client_reqs, mut client_reqr) = mpsc::channel(1000);
 
     // inhash-locking, to prevent racing a workitem with itself
@@ -114,9 +144,9 @@ async fn main() {
                     Ok((stream, addr)) => {
                         info!("new connection from {:?}", addr);
                         tokio::spawn(clients::handle_client(
+                            Arc::clone(&config),
                             client_reqs.clone(),
                             stream,
-                            Arc::clone(&valid_bearer_tokens),
                         ));
                     }
                     Err(e) => {

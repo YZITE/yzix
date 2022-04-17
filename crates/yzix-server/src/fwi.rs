@@ -7,8 +7,8 @@ pub struct FullWorkItem {
     pub inner: yzix_proto::WorkItem,
 }
 
-impl From<yzix_proto::WorkItem> for FullWorkItem {
-    fn from(inner: yzix_proto::WorkItem) -> Self {
+impl FullWorkItem {
+    pub fn new(inner: yzix_proto::WorkItem, store_path: &camino::Utf8Path) -> Self {
         use std::str::FromStr;
         use store_ref_scanner as srs;
         use yzix_proto::store::Digest;
@@ -19,8 +19,9 @@ impl From<yzix_proto::WorkItem> for FullWorkItem {
         let mut hasher = StoreHash::get_hasher();
         hasher.update(&ser[..]);
         let inhash = StoreHash::finalize_hasher(hasher);
-        let refs = srs::StoreRefScanner::new(&ser[..], &srs::StoreSpec::DFL_YZIX1)
-            // SAFETY: we know that only ASCII chars are possible here
+        let refs = srs::StoreRefScanner::new(&ser[..], &crate::build_store_spec(store_path))
+            // SAFETY: we know that only ASCII chars are possible here,
+            // and `build_store_spec` ensures that the hash is correctly truncated
             .map(|x| StoreHash::from_str(std::str::from_utf8(x).unwrap()).unwrap())
             .collect();
         Self {

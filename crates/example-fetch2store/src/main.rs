@@ -1,4 +1,4 @@
-use yzix_client::{Driver, Dump, StoreHash};
+use yzix_client::{store, Driver};
 
 async fn my_fetch(url: &str) -> Result<Vec<u8>, reqwest::Error> {
     Ok(reqwest::get(url).await?.bytes().await?.as_ref().to_vec())
@@ -25,11 +25,11 @@ async fn main() {
         .expect("unable to send authentication info to yzix server");
     let driver = Driver::new(stream).await;
 
-    let dump = Dump::Regular {
+    let dump = store::Dump::Regular {
         executable,
         contents: my_fetch(&url_to_fetch).await.expect("unable to fetch url"),
     };
 
-    println!("hash = {}", StoreHash::hash_complex(&dump));
+    println!("hash = {}", store::Hash::hash_complex(&dump));
     println!("res  = {:?}", driver.upload(dump).await);
 }

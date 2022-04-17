@@ -243,12 +243,21 @@ mod rewrite_store_refs {
     }
 }
 
-pub fn determine_store_closure(store_path: &Utf8Path, refs: &mut BTreeSet<StoreHash>) {
+pub fn build_store_spec(store_path: &Utf8Path) -> store_ref_scanner::StoreSpec<'_> {
     use store_ref_scanner::StoreSpec;
-    let stspec = StoreSpec {
+    StoreSpec {
         path_to_store: store_path.as_str(),
+        // necessary because we don't attach names to store entries
+        // and we don't want to pull in characters after the name
+        // (might happen when we parse a CBOR serialized message)
+        // if the name is not terminated with a slash.
+        valid_restbytes: Default::default(),
         ..StoreSpec::DFL_YZIX1
-    };
+    }
+}
+
+pub fn determine_store_closure(store_path: &Utf8Path, refs: &mut BTreeSet<StoreHash>) {
+    let stspec = build_store_spec(store_path);
     let mut new_refs = std::mem::take(refs);
 
     while !new_refs.is_empty() {
