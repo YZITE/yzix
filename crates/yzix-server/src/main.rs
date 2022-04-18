@@ -223,7 +223,10 @@ async fn main() {
                                 trace!("acquire container...");
                                 let containername = containerpool.get().await;
                                 trace!("start build in container {}", *containername);
-                                handle_process(&*config2, logs2.clone(), &*containername, item).await
+                                let span = span!(Level::ERROR, "handle_process", ?item.inner.args, ?item.inner.envs);
+                                handle_process(&*config2, logs2.clone(), &*containername, item)
+                                    .instrument(span)
+                                    .await
                             };
                             trace!("build finished ({})", if res.is_ok() { "successful" } else { "failed" });
                             let msg = match res {

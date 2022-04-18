@@ -2,7 +2,7 @@ use camino::Utf8Path;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::{marker::Unpin, path::Path, sync::Arc};
 use tokio::sync::broadcast::{self, Receiver, Sender};
-use tracing::{trace, Level};
+use tracing::trace;
 use yzix_proto::{
     store::Dump, store::Hash as StoreHash, strwrappers::OutputName, TaskBoundResponse,
 };
@@ -324,9 +324,6 @@ pub async fn handle_process(
     if args.is_empty() || args[0].is_empty() {
         return Err(BuildError::EmptyCommand);
     }
-
-    let span = tracing::span!(Level::ERROR, "handle_process", %inhash, ?args, ?envs);
-    let _guard = span.enter();
 
     let workdir = tempfile::tempdir()?;
     let rootdir = workdir.path().join("rootfs");
