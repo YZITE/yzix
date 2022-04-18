@@ -2,7 +2,7 @@ use camino::Utf8Path;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::{marker::Unpin, path::Path, sync::Arc};
 use tokio::sync::broadcast::{self, Receiver, Sender};
-use tracing::Level;
+use tracing::{trace, Level};
 use yzix_proto::{
     store::Dump, store::Hash as StoreHash, strwrappers::OutputName, TaskBoundResponse,
 };
@@ -18,6 +18,8 @@ async fn handle_logging_to_intermed<T: tokio::io::AsyncRead + Unpin>(
             break;
         }
     }
+
+    trace!("handle_logging_to_intermed finished");
     Ok(())
 }
 
@@ -33,6 +35,8 @@ async fn handle_logging_to_file(mut linp: Receiver<String>, loutp: &Path) -> std
     }
     fout.flush().await?;
     fout.shutdown().await?;
+
+    trace!("handle_logging_to_file finished");
     Ok(())
 }
 
@@ -49,6 +53,7 @@ async fn handle_logging_to_global(
             break;
         }
     }
+    trace!("handle_logging_to_global finished");
 }
 
 async fn build_linux_ocirt_spec(
@@ -301,7 +306,7 @@ pub fn placeholder(name: &OutputName) -> StoreHash {
 // NOTE: in the returned outputs, the hash is modulo the outputs
 pub async fn handle_process(
     config: &crate::ServerConfig,
-    logs: &Sender<(StoreHash, Arc<TaskBoundResponse>)>,
+    logs: Sender<(StoreHash, Arc<TaskBoundResponse>)>,
     container_name: &str,
     crate::FullWorkItem {
         inhash,
@@ -366,6 +371,8 @@ pub async fn handle_process(
         .await?;
     }
 
+    trace!("environment settings serialized");
+
     use std::process::Stdio;
     let mut ch = tokio::process::Command::new(&config.container_runner)
         .args(vec![
@@ -380,11 +387,13 @@ pub async fn handle_process(
         .current_dir(workdir.path())
         .kill_on_drop(true)
         .spawn()?;
-    let (logfwds, logfwdr) = broadcast::channel(10000);
-    let w = handle_logging_to_intermed(logfwds.clone(), ch.stdout.take().unwrap());
-    let x = handle_logging_to_intermed(logfwds.clone(), ch.stderr.take().unwrap());
+    let (logfwds, logfwdr) = broadcast::channel(1000);
+    let z = handle_logging_to_global(inhash, logfwdr, logs);
     let y = handle_logging_to_file(logfwds.subscribe(), logoutput.as_std_path());
-    let z = handle_logging_to_global(inhash, logfwdr, logs.clone());
+    let x = handle_logging_to_intermed(logfwds.clone(), ch.stderr.take().unwrap());
+    let w = handle_logging_to_intermed(logfwds.clone(), ch.stdout.take().unwrap());
+
+    trace!("runner + logfwd started; receiver_count={}", logfwds.receiver_count());
     let _ = logfwds;
 
     let (_, _, y, _, exs) = tokio::join!(w, x, y, z, ch.wait());

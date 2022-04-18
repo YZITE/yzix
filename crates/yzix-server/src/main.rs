@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::block_in_place;
 use tracing::{debug, error, info, span, trace, warn, Level};
+use tracing_futures::Instrument as _;
 use yzix_pool::Pool;
 use yzix_proto::{
     self, store::Dump, store::Flags as DumpFlags, store::Hash as StoreHash, Response,
@@ -39,6 +40,9 @@ async fn main() {
     {
         use std::env;
         for (key, _) in env::vars_os() {
+            if key == "RUST_LOG" {
+                continue;
+            }
             env::remove_var(key);
         }
         env::set_var("LC_ALL", "C.UTF-8");
@@ -132,6 +136,8 @@ async fn main() {
     // outhash-locking, to prevent racing in the store
     let store_locks = Arc::new(std::sync::Mutex::new(HashSet::<StoreHash>::new()));
 
+    trace!("ready");
+
     // main loop
     loop {
         tokio::select! {
@@ -206,21 +212,20 @@ async fn main() {
                         // delay the start of the task so that `tasks` remains consistent
                         let hold = Arc::new(tokio::sync::Notify::new());
                         let hold2 = hold.clone();
-                        let handle = tokio::spawn(async move {
+                        let handle = tokio::spawn((async move {
                             // task should get registered
                             hold.notified().await;
                             let _ = hold;
-                            trace!(%inhash, "determine store closure...");
+                            trace!("determine store closure...");
                             // TODO: how should we handle missing store paths?
                             block_in_place(|| determine_store_closure(&config2.store_path, &mut item.refs));
                             let res = {
-                                trace!(%inhash, "acquire container...");
+                                trace!("acquire container...");
                                 let containername = containerpool.get().await;
-                                trace!(%inhash, "start build in container {}", *containername);
-                                trace!(%inhash, "cmdline = ");
-                                handle_process(&*config2, &logs2, &*containername, item).await
+                                trace!("start build in container {}", *containername);
+                                handle_process(&*config2, logs2.clone(), &*containername, item).await
                             };
-                            trace!(%inhash, "build finished ({})", if res.is_ok() { "successful" } else { "failed" });
+                            trace!("build finished ({})", if res.is_ok() { "successful" } else { "failed" });
                             let msg = match res {
                                 Ok(x) => {
                                     tokio::task::spawn_blocking(move || {
@@ -297,15 +302,15 @@ async fn main() {
                                     }).await.unwrap()
                                 },
                                 Err(e) => {
-                                    warn!(%inhash, "build failed with error {}", e);
+                                    warn!("build failed with error {}", e);
                                     TaskBoundResponse::BuildError(e)
                                 },
                             };
-                            trace!(%inhash, "send result {:?}", msg);
+                            trace!("send result {:?}", msg);
                             let _: Result<_, _> = logs2.send((inhash, Arc::new(msg)));
-                            trace!(%inhash, "schedule job cleanup");
+                            trace!("schedule job cleanup");
                             let _: Result<_, _> = task_clup_s.send(inhash);
-                        });
+                        }).instrument(span!(Level::ERROR, "job", %inhash)));
                         tasks.insert(inhash, Task {
                             handle,
                             logs,
