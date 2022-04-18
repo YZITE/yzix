@@ -19,11 +19,12 @@ impl FullWorkItem {
         let mut hasher = StoreHash::get_hasher();
         hasher.update(&ser[..]);
         let inhash = StoreHash::finalize_hasher(hasher);
-        let refs = srs::StoreRefScanner::new(&ser[..], &crate::build_store_spec(store_path))
-            // SAFETY: we know that only ASCII chars are possible here,
-            // and `build_store_spec` ensures that the hash is correctly truncated
-            .map(|x| StoreHash::from_str(std::str::from_utf8(x).unwrap()).unwrap())
-            .collect();
+        let refs =
+            srs::StoreRefScanner::new(&ser[..], &yzix_store_refs::build_store_spec(store_path))
+                // SAFETY: we know that only ASCII chars are possible here,
+                // and `build_store_spec` ensures that the hash is correctly truncated
+                .map(|x| StoreHash::from_str(std::str::from_utf8(x).unwrap()).unwrap())
+                .collect();
         Self {
             inhash,
             refs,

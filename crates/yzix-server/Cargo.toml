@@ -46,3 +46,6 @@ path = "../yzix-pool"
 
 [dependencies.yzix-proto]
 path = "../yzix-proto"
+
+[dependencies.yzix-store-refs]
+path = "../yzix-store-refs"

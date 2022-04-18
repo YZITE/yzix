@@ -1,4 +1,3 @@
-use camino::Utf8Path;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::{marker::Unpin, path::Path, sync::Arc};
 use tokio::sync::broadcast::{self, Receiver, Sender};
@@ -192,98 +191,6 @@ async fn build_linux_ocirt_spec(
     Ok(spec)
 }
 
-mod extract_store_refs {
-    use std::collections::BTreeSet;
-    use std::str::FromStr;
-    use store_ref_scanner::StoreSpec;
-    use yzix_proto::store::{Dump, Hash as StoreHash};
-
-    fn from_vec<'a>(spec: &'a StoreSpec, dat: &'a [u8]) -> impl Iterator<Item = StoreHash> + 'a {
-        store_ref_scanner::StoreRefScanner::new(dat, spec)
-            // SAFETY: we know that only ASCII chars are possible here
-            .map(|x| StoreHash::from_str(std::str::from_utf8(x).unwrap()).unwrap())
-    }
-
-    pub fn from_dump(spec: &StoreSpec, dump: &Dump, refs: &mut BTreeSet<StoreHash>) {
-        match dump {
-            Dump::Regular { contents, .. } => {
-                refs.extend(from_vec(spec, contents));
-            }
-            Dump::SymLink { target } => {
-                refs.extend(from_vec(spec, target.as_str().as_bytes()));
-            }
-            Dump::Directory(dir) => {
-                dir.values().for_each(|v| from_dump(spec, v, refs));
-            }
-        }
-    }
-}
-
-mod rewrite_store_refs {
-    use std::str::FromStr;
-    use store_ref_scanner::StoreSpec;
-    use yzix_proto::store::{Dump, Hash as StoreHash};
-
-    type RwTab = std::collections::BTreeMap<StoreHash, StoreHash>;
-
-    fn in_vec(spec: &StoreSpec, rwtab: &RwTab, dat: &mut [u8]) {
-        for i in store_ref_scanner::StoreRefScanner::new(dat, spec) {
-            // SAFETY: we know that only ASCII chars are possible here
-            let oldhash = StoreHash::from_str(std::str::from_utf8(i).unwrap()).unwrap();
-            if let Some(newhash) = rwtab.get(&oldhash) {
-                tracing::info!(%oldhash, %newhash, "rewrote store ref");
-                i.copy_from_slice(newhash.to_string().as_bytes());
-            }
-        }
-    }
-
-    pub fn in_dump(spec: &StoreSpec, rwtab: &RwTab, dump: &mut Dump) {
-        match dump {
-            Dump::Regular { contents, .. } => {
-                in_vec(spec, rwtab, contents);
-            }
-            Dump::SymLink { target } => {
-                let mut tmp_target: Vec<u8> = target.as_str().bytes().collect();
-                in_vec(spec, rwtab, &mut tmp_target[..]);
-                *target = String::from_utf8(tmp_target)
-                    .expect("illegal hash characters used")
-                    .into();
-            }
-            Dump::Directory(dir) => {
-                dir.values_mut().for_each(|v| in_dump(spec, rwtab, v));
-            }
-        }
-    }
-}
-
-pub fn build_store_spec(store_path: &Utf8Path) -> store_ref_scanner::StoreSpec<'_> {
-    use store_ref_scanner::StoreSpec;
-    StoreSpec {
-        path_to_store: store_path.as_str(),
-        // necessary because we don't attach names to store entries
-        // and we don't want to pull in characters after the name
-        // (might happen when we parse a CBOR serialized message)
-        // if the name is not terminated with a slash.
-        valid_restbytes: Default::default(),
-        ..StoreSpec::DFL_YZIX1
-    }
-}
-
-pub fn determine_store_closure(store_path: &Utf8Path, refs: &mut BTreeSet<StoreHash>) {
-    let stspec = build_store_spec(store_path);
-    let mut new_refs = std::mem::take(refs);
-
-    while !new_refs.is_empty() {
-        for i in std::mem::take(&mut new_refs) {
-            refs.insert(i);
-            if let Ok(dump) = Dump::read_from_path(store_path.join(i.to_string()).as_std_path()) {
-                extract_store_refs::from_dump(&stspec, &dump, &mut new_refs);
-                new_refs.retain(|r| !refs.contains(r));
-            }
-        }
-    }
-}
-
 pub fn random_name() -> String {
     use rand::prelude::*;
     let mut rng = rand::thread_rng();
@@ -418,7 +325,7 @@ pub async fn handle_process(
                 ..StoreSpec::DFL_YZIX1
             };
             for (_, v, _) in &mut outputs.values_mut() {
-                rewrite_store_refs::in_dump(&stspec, &rwtab, v);
+                yzix_store_refs::rewrite_in_dump(&stspec, &rwtab, v);
             }
         }
         Ok(outputs

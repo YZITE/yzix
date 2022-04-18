@@ -87,7 +87,9 @@ async fn handle_submit_task(
             drop(hold);
             trace!("determine store closure...");
             // TODO: how should we handle missing store paths?
-            block_in_place(|| determine_store_closure(&config.store_path, &mut item.refs));
+            block_in_place(|| {
+                yzix_store_refs::determine_store_closure(&config.store_path, &mut item.refs)
+            });
             let res = {
                 trace!("acquire container...");
                 let containername = containerpool.get().await;

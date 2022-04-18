@@ -1643,6 +1643,7 @@ dependencies = [
  "tracing-subscriber",
  "yzix-pool",
  "yzix-proto",
+ "yzix-store-refs",
 ]
 
 [[package]]
@@ -1660,6 +1661,16 @@ dependencies = [
  "serde_test",
  "thiserror",
  "xattr",
+]
+
+[[package]]
+name = "yzix-store-refs"
+version = "0.1.0"
+dependencies = [
+ "camino",
+ "store-ref-scanner",
+ "tracing",
+ "yzix-store",
 ]
 
 [[package]]
