@@ -390,11 +390,10 @@ pub async fn handle_process(
     let (logfwds, logfwdr) = broadcast::channel(1000);
     let z = handle_logging_to_global(inhash, logfwdr, logs);
     let y = handle_logging_to_file(logfwds.subscribe(), logoutput.as_std_path());
+    let rcvc = logfwds.receiver_count();
     let x = handle_logging_to_intermed(logfwds.clone(), ch.stderr.take().unwrap());
-    let w = handle_logging_to_intermed(logfwds.clone(), ch.stdout.take().unwrap());
-
-    trace!("runner + logfwd started; receiver_count={}", logfwds.receiver_count());
-    let _ = logfwds;
+    let w = handle_logging_to_intermed(logfwds, ch.stdout.take().unwrap());
+    trace!("runner + logfwd started; receiver_count={}", rcvc);
 
     let (_, _, y, _, exs) = tokio::join!(w, x, y, z, ch.wait());
     let (_, exs) = (y?, exs?);
