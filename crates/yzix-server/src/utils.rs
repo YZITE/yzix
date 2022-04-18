@@ -91,6 +91,7 @@ async fn build_linux_ocirt_spec(
                 .build()
                 .unwrap();
         });
+    let mut ropaths = osr::get_default_readonly_paths();
     if !refs.is_empty() {
         let fake_store = rootdir.join(&config.store_path.as_str()[1..]);
         tokio::fs::create_dir_all(&fake_store).await?;
@@ -109,6 +110,7 @@ async fn build_linux_ocirt_spec(
                         .build()
                         .unwrap(),
                 );
+                ropaths.push(spath.to_string());
                 tokio::fs::create_dir(dpath).await?;
             } else {
                 // we don't use hard links (for now)
@@ -125,7 +127,6 @@ async fn build_linux_ocirt_spec(
     }
     let mut caps = HashSet::new();
     caps.insert(osr::Capability::BlockSuspend);
-    let ropaths = osr::get_default_readonly_paths();
     let mut namespaces = osr::get_default_namespaces();
     namespaces.push(
         osr::LinuxNamespaceBuilder::default()
