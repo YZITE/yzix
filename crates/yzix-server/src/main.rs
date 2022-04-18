@@ -3,7 +3,8 @@
     clippy::cast_ptr_alignment,
     clippy::let_underscore_drop,
     trivial_casts,
-    unconditional_recursion
+    unconditional_recursion,
+    unsafe_code
 )]
 
 use camino::Utf8PathBuf;

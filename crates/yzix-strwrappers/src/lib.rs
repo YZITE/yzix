@@ -1,4 +1,12 @@
 #![no_std]
+#![forbid(
+    clippy::as_conversions,
+    clippy::cast_ptr_alignment,
+    clippy::let_underscore_drop,
+    trivial_casts,
+    unconditional_recursion,
+    unsafe_code
+)]
 
 use core::{convert, fmt};
 use serde::{Deserialize, Serialize};

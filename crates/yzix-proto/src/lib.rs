@@ -1,3 +1,12 @@
+#![forbid(
+    clippy::as_conversions,
+    clippy::cast_ptr_alignment,
+    clippy::let_underscore_drop,
+    trivial_casts,
+    unconditional_recursion,
+    unsafe_code
+)]
+
 pub use yzix_store as store;
 pub use yzix_strwrappers as strwrappers;
 

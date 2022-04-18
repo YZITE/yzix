@@ -1,4 +1,14 @@
+#![forbid(
+    clippy::as_conversions,
+    clippy::cast_ptr_alignment,
+    clippy::let_underscore_drop,
+    trivial_casts,
+    unconditional_recursion,
+    unsafe_code
+)]
+
 use futures_util::{SinkExt as _, StreamExt as _};
+use std::mem::drop;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 pub use yzix_proto::*;
@@ -123,7 +133,7 @@ impl Driver {
                                 tracing::debug!("{}: -> {:?}", tid, tbr);
                                 // broadcast
                                 for i in rinfo.answ_chans {
-                                    let _ = i.send(tbr.clone()).is_ok();
+                                    drop::<Result<_, _>>(i.send(tbr.clone()));
                                 }
                             }
                             Resp::TaskBound(tid, tbr) => {
@@ -135,7 +145,7 @@ impl Driver {
                                         _ => format!("{:?}", x.orig_req),
                                     };
                                     tracing::debug!("{}: {} -> {:?}", tid, tfmt, tbr);
-                                    let _ = x.answ_chan.send(Resp::TaskBound(tid, tbr)).is_ok();
+                                    drop::<Result<_, _>>(x.answ_chan.send(Resp::TaskBound(tid, tbr)));
                                 } else {
                                     tracing::warn!("{}: {:?} (unhandled)", tid, tbr);
                                 }
@@ -154,7 +164,7 @@ impl Driver {
                                         _ => format!("{:?}", x.orig_req),
                                     };
                                     tracing::debug!("{} -> {:?}", tfmt, msg);
-                                    let _ = x.answ_chan.send(msg).is_ok();
+                                    drop::<Result<_, _>>(x.answ_chan.send(msg));
                                 } else {
                                     tracing::warn!("{:?} (unhandled)", msg);
                                 }

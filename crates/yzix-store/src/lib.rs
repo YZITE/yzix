@@ -1,3 +1,12 @@
+#![forbid(
+    clippy::as_conversions,
+    clippy::cast_ptr_alignment,
+    clippy::let_underscore_drop,
+    trivial_casts,
+    unconditional_recursion,
+    unsafe_code
+)]
+
 use base64::engine::fast_portable::{FastPortable, FastPortableConfig};
 pub use blake2::Digest;
 use blake2::{digest::consts::U32, Blake2b};
