@@ -4,8 +4,8 @@ use yzix_client::{store::Hash as StoreHash, strwrappers::OutputName, Driver, Wor
 async fn main() {
     /* === seed === */
 
-    // $ example-fetch2store http://tarballs.nixos.org/stdenv-linux/i686/4907fc9e8d0d82b28b3c56e3a478a2882f1d700f/busybox --executable
-    let h_busybox = "wd63RyT_KU_CAjTutNrd02DORs8B1lV898NM0SkaZL0"
+    // $ example-fetch2store --executable --with-path busybox http://tarballs.nixos.org/stdenv-linux/i686/4907fc9e8d0d82b28b3c56e3a478a2882f1d700f/busybox
+    let h_busybox = "w8IOW8qGaJ7U7KgtN8DORUcDXEfrN4v0LEyq8Bdf5K4"
         .parse::<StoreHash>()
         .unwrap();
 
@@ -14,7 +14,7 @@ async fn main() {
         .parse::<StoreHash>()
         .unwrap();
 
-    // $ example-fetch2store https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/stdenv/linux/bootstrap-tools/scripts/unpack-bootstrap-tools.sh --executable
+    // $ example-fetch2store --executable https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/stdenv/linux/bootstrap-tools/scripts/unpack-bootstrap-tools.sh
     let h_unpack_bootstrap_tools = "iT9CylT+P5jwNlv8UD4jAVz+EKTTCIj+tUnYpgjRbBQ"
         .parse::<StoreHash>()
         .unwrap();
