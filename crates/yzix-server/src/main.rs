@@ -258,11 +258,13 @@ async fn main() {
                                                 debug!("output already present");
                                             }
                                             if realhash != outhash {
+                                                debug!("create symlink to handle self-references");
                                                 let dstpath = config2
                                                     .store_path
                                                     .join(&outhash.to_string())
                                                     .into_std_path_buf();
-                                                debug!("create symlink to handle self-references");
+                                                // we want to create a relative symlink
+                                                let realdstpath = std::path::PathBuf::from(realhash.to_string());
                                                 // TODO: handle mismatching symlink targets
                                                 use std::io::{Error, ErrorKind};
                                                 if let Err(e) = std::os::unix::fs::symlink(&realdstpath, &dstpath) {
@@ -293,7 +295,8 @@ async fn main() {
                                                     }
                                                 }
                                             }
-                                            ret.insert(outname, outhash);
+                                            // avoid unnecessary indirection by always using the CA path
+                                            ret.insert(outname, realhash);
                                         }
 
                                         // register realisation
