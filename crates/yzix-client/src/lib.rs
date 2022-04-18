@@ -208,12 +208,12 @@ impl Driver {
         answ_get.await.unwrap()
     }
 
-    pub async fn has_out_hash(&self, data: store::Hash) -> Response {
+    pub async fn has_out_hash(&self, data: store::Hash) -> bool {
         let (answ_chan, answ_get) = oneshot::channel();
         self.wchan_s
             .send(WorkMessage::HasOutHash { data, answ_chan })
             .unwrap();
-        answ_get.await.unwrap()
+        answ_get.await.unwrap() == Response::Ok
     }
 
     pub async fn download(&self, data: store::Hash) -> Response {
