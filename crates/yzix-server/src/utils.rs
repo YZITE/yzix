@@ -18,7 +18,6 @@ async fn handle_logging_to_intermed<T: tokio::io::AsyncRead + Unpin>(
         }
     }
 
-    trace!("handle_logging_to_intermed finished");
     Ok(())
 }
 
@@ -28,14 +27,20 @@ async fn handle_logging_to_file(mut linp: Receiver<String>, loutp: &Path) -> std
         tokio::fs::File::create(loutp).await?,
         async_compression::Level::Best,
     );
+    let mut got_any_content = false;
     while let Ok(mut content) = linp.recv().await {
         content.push('\n');
+        got_any_content = true;
         fout.write_all(content.as_bytes()).await?;
     }
     fout.flush().await?;
     fout.shutdown().await?;
 
-    trace!("handle_logging_to_file finished");
+    std::mem::drop(fout);
+    if !got_any_content {
+        trace!("log is empty -> remove");
+        tokio::fs::remove_file(loutp).await?;
+    }
     Ok(())
 }
 
@@ -52,7 +57,6 @@ async fn handle_logging_to_global(
             break;
         }
     }
-    trace!("handle_logging_to_global finished");
 }
 
 async fn build_linux_ocirt_spec(
