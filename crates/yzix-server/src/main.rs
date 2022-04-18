@@ -1,5 +1,14 @@
+#![forbid(
+    clippy::as_conversions,
+    clippy::cast_ptr_alignment,
+    clippy::let_underscore_drop,
+    trivial_casts,
+    unconditional_recursion
+)]
+
 use camino::Utf8PathBuf;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::mem::drop;
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::block_in_place;
@@ -31,6 +40,163 @@ pub struct ServerConfig {
 pub struct Task {
     handle: tokio::task::JoinHandle<()>,
     logs: broadcast::Sender<(StoreHash, Arc<TaskBoundResponse>)>,
+}
+
+enum TaskAction {
+    Insert(Task),
+    Remove,
+}
+
+struct HandleSubmitTaskEnv {
+    config: Arc<ServerConfig>,
+    containerpool: Pool<String>,
+    store_locks: Arc<std::sync::Mutex<HashSet<StoreHash>>>,
+    tasks_s: mpsc::UnboundedSender<(StoreHash, TaskAction)>,
+
+    inpath: Utf8PathBuf,
+    item: FullWorkItem,
+    subscribe: Option<clients::SubscribeChan>,
+}
+
+// this function is split out from the main loop to prevent too much right-ward drift
+// and make the code easier to read.
+async fn handle_submit_task(
+    HandleSubmitTaskEnv {
+        config,
+        containerpool,
+        store_locks,
+        tasks_s,
+
+        inpath,
+        mut item,
+        subscribe,
+    }: HandleSubmitTaskEnv,
+) {
+    let inhash = item.inhash;
+    let (logs, logr) = broadcast::channel(10000);
+    let logs2 = logs.clone();
+    // delay the start of the task so that `tasks` remains consistent
+    let hold = Arc::new(tokio::sync::Notify::new());
+    let hold2 = hold.clone();
+    let tasks2_s = tasks_s.clone();
+    let handle = tokio::spawn(
+        (async move {
+            // task should get registered
+            hold.notified().await;
+            drop(hold);
+            trace!("determine store closure...");
+            // TODO: how should we handle missing store paths?
+            block_in_place(|| determine_store_closure(&config.store_path, &mut item.refs));
+            let res = {
+                trace!("acquire container...");
+                let containername = containerpool.get().await;
+                trace!("start build in container {}", *containername);
+                let span =
+                    span!(Level::ERROR, "handle_process", ?item.inner.args, ?item.inner.envs);
+                handle_process(&*config, logs2.clone(), &*containername, item)
+                    .instrument(span)
+                    .await
+            };
+            trace!(
+                "build finished ({})",
+                if res.is_ok() { "successful" } else { "failed" }
+            );
+            let msg = match res {
+                Ok(x) => {
+                    tokio::task::spawn_blocking(move || {
+                        let mut ret = BTreeMap::new();
+                        for (outname, (outhash, dump)) in x {
+                            let realhash = StoreHash::hash_complex::<Dump>(&dump);
+                            let span = span!(Level::ERROR, "output", %outname, %outhash, %realhash);
+                            let _guard = span.enter();
+                            let realdstpath = config
+                                .store_path
+                                .join(&realhash.to_string())
+                                .into_std_path_buf();
+                            if store_locks.lock().unwrap().insert(realhash) && !realdstpath.exists()
+                            {
+                                debug!("dumping to store ...");
+                                if let Err(e) = dump.write_to_path(
+                                    &realdstpath,
+                                    DumpFlags {
+                                        force: true,
+                                        make_readonly: true,
+                                    },
+                                ) {
+                                    error!("dumping to store failed: {}", e);
+                                    store_locks.lock().unwrap().remove(&realhash);
+                                    return TaskBoundResponse::BuildError(e.into());
+                                }
+                                store_locks.lock().unwrap().remove(&realhash);
+                            } else {
+                                debug!("output already present");
+                            }
+                            if realhash != outhash {
+                                debug!("create symlink to handle self-references");
+                                let dstpath = config
+                                    .store_path
+                                    .join(&outhash.to_string())
+                                    .into_std_path_buf();
+                                // we want to create a relative symlink
+                                let realdstpath = std::path::PathBuf::from(realhash.to_string());
+                                // TODO: handle mismatching symlink targets
+                                use std::io::{Error, ErrorKind};
+                                if let Err(e) = std::os::unix::fs::symlink(&realdstpath, &dstpath) {
+                                    if e.kind() == std::io::ErrorKind::AlreadyExists {
+                                        match std::fs::read_link(&dstpath) {
+                                            Ok(oldtrg) if oldtrg == realdstpath => {}
+                                            Ok(orig_target) => {
+                                                error!(
+                                                    ?orig_target,
+                                                    ?realdstpath,
+                                                    "self-ref CA path differs"
+                                                );
+                                                return TaskBoundResponse::BuildError(
+                                                    Error::from(ErrorKind::AlreadyExists).into(),
+                                                );
+                                            }
+                                            Err(e) => {
+                                                error!(
+                                                    "checking self-reference symlink failed: {}",
+                                                    e
+                                                );
+                                                return TaskBoundResponse::BuildError(e.into());
+                                            }
+                                        }
+                                    } else {
+                                        error!("creating self-reference symlink failed: {}", e);
+                                        return TaskBoundResponse::BuildError(e.into());
+                                    }
+                                }
+                            }
+                            // avoid unnecessary indirection by always using the CA path
+                            ret.insert(outname, realhash);
+                        }
+
+                        // register realisation
+                        in2_helpers::create_in2_symlinks(inpath.as_std_path(), &ret);
+                        TaskBoundResponse::BuildSuccess(ret)
+                    })
+                    .await
+                    .unwrap()
+                }
+                Err(e) => {
+                    warn!("build failed with error {}", e);
+                    TaskBoundResponse::BuildError(e)
+                }
+            };
+            trace!("send result {:?}", msg);
+            drop::<Result<_, _>>(logs2.send((inhash, Arc::new(msg))));
+            trace!("schedule job cleanup");
+            drop::<Result<_, _>>(tasks_s.send((inhash, TaskAction::Remove)));
+        })
+        .instrument(span!(Level::ERROR, "job", %inhash)),
+    );
+    drop::<Result<_, _>>(tasks2_s.send((inhash, TaskAction::Insert(Task { handle, logs }))));
+    if let Some(x) = subscribe {
+        drop(x.send(logr).await);
+    }
+    hold2.notify_one();
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -130,7 +296,7 @@ async fn main() {
     let (client_reqs, mut client_reqr) = mpsc::unbounded_channel();
 
     // inhash-locking, to prevent racing a workitem with itself
-    let (task_clup_s, mut task_clup_r) = mpsc::unbounded_channel();
+    let (tasks_s, mut tasks_r) = mpsc::unbounded_channel();
     let mut tasks = HashMap::<StoreHash, Task>::new();
 
     // outhash-locking, to prevent racing in the store
@@ -163,174 +329,64 @@ async fn main() {
 
             Some(clients::Request { inner, resp }) = client_reqr.recv() => {
                 use clients::RequestKind as Rk;
-                match inner {
+                let res = match inner {
                     Rk::Kill(tid) => {
                         use std::collections::hash_map::Entry;
                         match tasks.entry(tid) {
                             Entry::Occupied(occ) => {
                                 let ent = occ.remove();
                                 ent.handle.abort();
-                                let _: Result<_, _> = ent.logs.send((tid, Arc::new(
+                                drop::<Result<_, _>>(ent.logs.send((tid, Arc::new(
                                     TaskBoundResponse::BuildError(yzix_proto::BuildError::KilledByClient),
-                                )));
-                                let _ = resp.send(Response::Ok).await;
+                                ))));
+                                Response::Ok
                             },
-                            Entry::Vacant(_) => {
-                                let _ = resp.send(Response::False).await;
-                            },
+                            Entry::Vacant(_) => Response::False,
                         }
                     },
-                    Rk::SubmitTask { mut item, subscribe } => {
-                        if let Some(apt) = tasks.get(&item.inhash) {
-                            if let Some(x) = subscribe {
-                                let _ = x.send(apt.logs.subscribe()).await;
-                            }
-                            continue;
-                        }
+                    Rk::SubmitTask { item, subscribe } => {
                         let inhash = item.inhash;
-                        let inpath = config.store_path.join(format!("{}{}", inhash, INPUT_REALISATION_DIR_POSTFIX));
-                        let ex_outputs = in2_helpers::resolve_in2(inpath.as_std_path());
-                        if !ex_outputs.is_empty() {
+                        if let Some(apt) = tasks.get(&inhash) {
                             if let Some(x) = subscribe {
-                                tokio::spawn(async move {
-                                    let (s, r) = broadcast::channel(2);
-                                    let _: Result<_, _> = s.send((
-                                        item.inhash,
-                                        Arc::new(TaskBoundResponse::BuildSuccess(ex_outputs))
-                                    ));
-                                    let _ = x.send(r).await;
-                                });
+                                drop(x.send(apt.logs.subscribe()).await);
                             }
-                            continue;
-                        }
-                        let (logs, logr) = broadcast::channel(10000);
-                        let config2 = config.clone();
-                        let logs2 = logs.clone();
-                        let store_locks = store_locks.clone();
-                        let task_clup_s = task_clup_s.clone();
-                        let containerpool = containerpool.clone();
-                        // delay the start of the task so that `tasks` remains consistent
-                        let hold = Arc::new(tokio::sync::Notify::new());
-                        let hold2 = hold.clone();
-                        let handle = tokio::spawn((async move {
-                            // task should get registered
-                            hold.notified().await;
-                            let _ = hold;
-                            trace!("determine store closure...");
-                            // TODO: how should we handle missing store paths?
-                            block_in_place(|| determine_store_closure(&config2.store_path, &mut item.refs));
-                            let res = {
-                                trace!("acquire container...");
-                                let containername = containerpool.get().await;
-                                trace!("start build in container {}", *containername);
-                                let span = span!(Level::ERROR, "handle_process", ?item.inner.args, ?item.inner.envs);
-                                handle_process(&*config2, logs2.clone(), &*containername, item)
-                                    .instrument(span)
-                                    .await
-                            };
-                            trace!("build finished ({})", if res.is_ok() { "successful" } else { "failed" });
-                            let msg = match res {
-                                Ok(x) => {
-                                    tokio::task::spawn_blocking(move || {
-                                        let mut ret = BTreeMap::new();
-                                        for (outname, (outhash, dump)) in x {
-                                            let realhash = StoreHash::hash_complex::<Dump>(&dump);
-                                            let span = span!(Level::ERROR, "output", %outname, %outhash, %realhash);
-                                            let _guard = span.enter();
-                                            let realdstpath = config2
-                                                .store_path
-                                                .join(&realhash.to_string())
-                                                .into_std_path_buf();
-                                            if store_locks.lock().unwrap().insert(realhash) && !realdstpath.exists() {
-                                                debug!("dumping to store ...");
-                                                if let Err(e) = dump.write_to_path(
-                                                    &realdstpath,
-                                                    DumpFlags {
-                                                        force: true,
-                                                        make_readonly: true,
-                                                    },
-                                                ) {
-                                                    error!("dumping to store failed: {}", e);
-                                                    store_locks.lock().unwrap().remove(&realhash);
-                                                    return TaskBoundResponse::BuildError(e.into());
-                                                }
-                                                store_locks.lock().unwrap().remove(&realhash);
-                                            } else {
-                                                debug!("output already present");
-                                            }
-                                            if realhash != outhash {
-                                                debug!("create symlink to handle self-references");
-                                                let dstpath = config2
-                                                    .store_path
-                                                    .join(&outhash.to_string())
-                                                    .into_std_path_buf();
-                                                // we want to create a relative symlink
-                                                let realdstpath = std::path::PathBuf::from(realhash.to_string());
-                                                // TODO: handle mismatching symlink targets
-                                                use std::io::{Error, ErrorKind};
-                                                if let Err(e) = std::os::unix::fs::symlink(&realdstpath, &dstpath) {
-                                                    if e.kind() == std::io::ErrorKind::AlreadyExists {
-                                                        match std::fs::read_link(&dstpath) {
-                                                            Ok(oldtrg) if oldtrg == realdstpath => {}
-                                                            Ok(orig_target) => {
-                                                                error!(
-                                                                    ?orig_target,
-                                                                    ?realdstpath,
-                                                                    "self-ref CA path differs"
-                                                                );
-                                                                return TaskBoundResponse::BuildError(
-                                                                    Error::from(ErrorKind::AlreadyExists).into()
-                                                                );
-                                                            }
-                                                            Err(e) => {
-                                                                error!(
-                                                                    "checking self-reference symlink failed: {}",
-                                                                    e
-                                                                );
-                                                                return TaskBoundResponse::BuildError(e.into());
-                                                            }
-                                                        }
-                                                    } else {
-                                                        error!("creating self-reference symlink failed: {}", e);
-                                                        return TaskBoundResponse::BuildError(e.into());
-                                                    }
-                                                }
-                                            }
-                                            // avoid unnecessary indirection by always using the CA path
-                                            ret.insert(outname, realhash);
-                                        }
+                        } else {
+                            let inpath = config
+                                .store_path
+                                .join(format!("{}{}", inhash, INPUT_REALISATION_DIR_POSTFIX));
+                            let ex_outputs = in2_helpers::resolve_in2(inpath.as_std_path());
+                            if !ex_outputs.is_empty() {
+                                if let Some(x) = subscribe {
+                                    tokio::spawn(async move {
+                                        let (s, r) = broadcast::channel(2);
+                                        drop::<Result<_, _>>(s.send((
+                                            item.inhash,
+                                            Arc::new(TaskBoundResponse::BuildSuccess(ex_outputs)),
+                                        )));
+                                        drop(x.send(r).await);
+                                    });
+                                }
+                            } else {
+                                handle_submit_task(HandleSubmitTaskEnv {
+                                    config: config.clone(),
+                                    store_locks: store_locks.clone(),
+                                    containerpool: containerpool.clone(),
+                                    tasks_s: tasks_s.clone(),
 
-                                        // register realisation
-                                        in2_helpers::create_in2_symlinks(inpath.as_std_path(), &ret);
-                                        TaskBoundResponse::BuildSuccess(ret)
-                                    }).await.unwrap()
-                                },
-                                Err(e) => {
-                                    warn!("build failed with error {}", e);
-                                    TaskBoundResponse::BuildError(e)
-                                },
-                            };
-                            trace!("send result {:?}", msg);
-                            let _: Result<_, _> = logs2.send((inhash, Arc::new(msg)));
-                            trace!("schedule job cleanup");
-                            let _: Result<_, _> = task_clup_s.send(inhash);
-                        }).instrument(span!(Level::ERROR, "job", %inhash)));
-                        tasks.insert(inhash, Task {
-                            handle,
-                            logs,
-                        });
-                        if let Some(x) = subscribe {
-                            let _ = x.send(logr).await;
+                                    inpath,
+                                    item,
+                                    subscribe,
+                                }).await;
+                            }
                         }
-                        hold2.notify_one();
-                        let _ = resp.send(Response::TaskBound(
+                        Response::TaskBound(
                             inhash,
                             TaskBoundResponse::Queued,
-                        )).await;
+                        )
                     },
                     Rk::Upload(d) => {
                         let h = StoreHash::hash_complex::<Dump>(&d);
-                        let response = if tasks.contains_key(&h) {
+                        if tasks.contains_key(&h) {
                             Response::False
                         } else {
                             let p = config.store_path.join(h.to_string());
@@ -347,34 +403,42 @@ async fn main() {
                             } else {
                                 Response::Ok
                             }
-                        };
-                        let _ = resp.send(response).await;
+                        }
                     },
                     Rk::HasOutHash(h) => {
-                        let _ = resp.send(if config.store_path.join(h.to_string()).exists() {
+                        if config.store_path.join(h.to_string()).exists() {
                             Response::Ok
                         } else {
                             Response::False
-                        }).await;
+                        }
                     },
                     Rk::Download(h) => {
                         let dump = block_in_place(|| Dump::read_from_path(
                             config.store_path.join(h.to_string()).as_std_path()
                         ));
-                        let _ = resp.send(match dump {
+                        match dump {
                             Ok(dump) => Response::Dump(dump),
                             Err(e) => Response::TaskBound(
                                 h,
                                 TaskBoundResponse::BuildError(e.into())
                             ),
-                        }).await;
+                        }
                     },
-                }
+                };
+                drop(resp.send(res).await);
             },
 
-            Some(tid) = task_clup_r.recv() => {
-                debug!("reaping task {}", tid);
-                tasks.remove(&tid);
+            Some((tid, act)) = tasks_r.recv() => {
+                match act {
+                    TaskAction::Remove => {
+                        debug!("reaping task {}", tid);
+                        tasks.remove(&tid);
+                    }
+                    TaskAction::Insert(tdat) => {
+                        debug!("registering task {}", tid);
+                        tasks.insert(tid, tdat);
+                    }
+                }
             },
         }
     }

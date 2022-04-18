@@ -11,11 +11,13 @@ pub struct Request {
     pub resp: mpsc::Sender<yzix_proto::Response>,
 }
 
+pub type SubscribeChan = mpsc::Sender<broadcast::Receiver<(store::Hash, Arc<TaskBoundResponse>)>>;
+
 pub enum RequestKind {
     Kill(store::Hash),
     SubmitTask {
         item: crate::FullWorkItem,
-        subscribe: Option<mpsc::Sender<broadcast::Receiver<(store::Hash, Arc<TaskBoundResponse>)>>>,
+        subscribe: Option<SubscribeChan>,
     },
     Upload(store::Dump),
     HasOutHash(store::Hash),
@@ -164,7 +166,7 @@ pub async fn handle_client(
             }
         }
 
-        let _ = sink.close().await;
+        let _sclr = sink.close().await;
     };
 
     tokio::join!(handle_input, handle_output);
