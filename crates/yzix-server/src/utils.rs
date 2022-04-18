@@ -315,7 +315,6 @@ pub async fn handle_process(
             })
             .collect::<Result<_, _>>()?;
         {
-            // rewrite hashes...; this breaks our ability to verify the path, but nah...
             let rwtab: BTreeMap<_, _> = outputs
                 .values()
                 .map(|&(plh, _, outhash)| (plh, outhash))
