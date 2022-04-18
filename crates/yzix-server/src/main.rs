@@ -232,8 +232,6 @@ async fn main() {
                             let msg = match res {
                                 Ok(x) => {
                                     tokio::task::spawn_blocking(move || {
-                                        let span = span!(Level::ERROR, "handling outputs", %inhash);
-                                        let _guard = span.enter();
                                         let mut ret = BTreeMap::new();
                                         for (outname, (outhash, dump)) in x {
                                             let realhash = StoreHash::hash_complex::<Dump>(&dump);
