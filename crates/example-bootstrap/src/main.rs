@@ -39,14 +39,19 @@ async fn main() {
 
     /* === bootstrap stage 0 === */
 
+    let bb = format!("{}/{}/busybox", store_path, h_busybox);
+
     let bootstrap_tools = driver
         .run_task(WorkItem {
-            envs: [("builder", h_busybox), ("tarball", h_bootstrap_tools)]
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), format!("{}/{}", store_path, v)))
-                .collect(),
+            envs: [
+                ("builder", bb.clone()),
+                ("tarball", format!("{}/{}", store_path, h_bootstrap_tools)),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
             args: vec![
-                format!("{}/{}", store_path, h_busybox),
+                bb.clone(),
                 "ash".to_string(),
                 "-e".to_string(),
                 format!("{}/{}", store_path, h_unpack_bootstrap_tools),
