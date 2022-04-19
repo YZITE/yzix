@@ -49,6 +49,7 @@ enum TaskAction {
 }
 
 struct HandleSubmitTaskEnv {
+    cache_store_refs: Arc<std::sync::Mutex<yzix_store_refs::Cache>>,
     config: Arc<ServerConfig>,
     containerpool: Pool<String>,
     store_locks: Arc<std::sync::Mutex<HashSet<StoreHash>>>,
@@ -63,6 +64,7 @@ struct HandleSubmitTaskEnv {
 // and make the code easier to read.
 async fn handle_submit_task(
     HandleSubmitTaskEnv {
+        cache_store_refs,
         config,
         containerpool,
         store_locks,
@@ -88,7 +90,13 @@ async fn handle_submit_task(
             trace!("determine store closure...");
             // TODO: how should we handle missing store paths?
             block_in_place(|| {
-                yzix_store_refs::determine_store_closure(&config.store_path, &mut item.refs)
+                yzix_store_refs::determine_store_closure(
+                    &config.store_path,
+                    &mut cache_store_refs
+                        .lock()
+                        .expect("unable to lock store ref cache"),
+                    &mut item.refs,
+                )
             });
             let res = {
                 trace!("acquire container...");
@@ -298,6 +306,8 @@ async fn main() {
 
     let (client_reqs, mut client_reqr) = mpsc::unbounded_channel();
 
+    let cache_store_refs = Arc::new(std::sync::Mutex::new(yzix_store_refs::Cache::new(1000)));
+
     // inhash-locking, to prevent racing a workitem with itself
     let (tasks_s, mut tasks_r) = mpsc::unbounded_channel();
     let mut tasks = HashMap::<StoreHash, Task>::new();
@@ -371,9 +381,10 @@ async fn main() {
                                 }
                             } else {
                                 handle_submit_task(HandleSubmitTaskEnv {
+                                    cache_store_refs: cache_store_refs.clone(),
                                     config: config.clone(),
-                                    store_locks: store_locks.clone(),
                                     containerpool: containerpool.clone(),
+                                    store_locks: store_locks.clone(),
                                     tasks_s: tasks_s.clone(),
 
                                     inpath,

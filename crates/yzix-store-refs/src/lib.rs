@@ -1,4 +1,5 @@
 use camino::Utf8Path;
+use lru::LruCache;
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 use store_ref_scanner::{StoreRefScanner, StoreSpec};
@@ -70,16 +71,31 @@ pub fn build_store_spec(store_path: &Utf8Path) -> store_ref_scanner::StoreSpec<'
     }
 }
 
-pub fn determine_store_closure(store_path: &Utf8Path, refs: &mut BTreeSet<StoreHash>) {
+pub type Cache = LruCache<StoreHash, BTreeSet<StoreHash>>;
+
+pub fn determine_store_closure(
+    store_path: &Utf8Path,
+    cache: &mut Cache,
+    refs: &mut BTreeSet<StoreHash>,
+) {
     let stspec = build_store_spec(store_path);
     let mut new_refs = std::mem::take(refs);
 
     while !new_refs.is_empty() {
         for i in std::mem::take(&mut new_refs) {
-            refs.insert(i);
-            if let Ok(dump) = Dump::read_from_path(store_path.join(i.to_string()).as_std_path()) {
-                extract_from_dump(&stspec, &dump, &mut new_refs);
-                new_refs.retain(|r| !refs.contains(r));
+            if !refs.insert(i) {
+                // ref already crawled
+                continue;
+            }
+            if let Some(tmp_refs) = cache.get(&i) {
+                new_refs.extend(tmp_refs.iter().copied());
+            } else if let Ok(dump) =
+                Dump::read_from_path(store_path.join(i.to_string()).as_std_path())
+            {
+                let mut tmp_refs = BTreeSet::new();
+                extract_from_dump(&stspec, &dump, &mut tmp_refs);
+                new_refs.extend(tmp_refs.iter().copied());
+                cache.put(i, tmp_refs);
             }
         }
     }

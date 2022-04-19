@@ -6,6 +6,7 @@ license = "Apache-2.0 WITH LLVM-exception"
 
 [dependencies]
 camino = "1.0"
+lru = "0.7"
 store-ref-scanner = "0.1"
 tracing = "0.1"
 
