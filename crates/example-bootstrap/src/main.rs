@@ -5,17 +5,17 @@ async fn main() {
     /* === seed === */
 
     // $ example-fetch2store --executable --with-path busybox http://tarballs.nixos.org/stdenv-linux/i686/4907fc9e8d0d82b28b3c56e3a478a2882f1d700f/busybox
-    let h_busybox = "w8IOW8qGaJ7U7KgtN8DORUcDXEfrN4v0LEyq8Bdf5K4"
+    let h_busybox = "liAXAxlPQSRlEjqQFgoewxVmQTv73rfukUCyyPZfsKI"
         .parse::<StoreHash>()
         .unwrap();
 
     // $ example-fetch2store http://tarballs.nixos.org/stdenv-linux/i686/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz
-    let h_bootstrap_tools = "eMj+BkfZLcaYHJi8AYzIjXxhSWTmjDd5CmyJKI2zb8o"
+    let h_bootstrap_tools = "V2QVvHUYOYoESuMSI89zKvlZWnYVhd4JtECfNQv+ll4"
         .parse::<StoreHash>()
         .unwrap();
 
     // $ example-fetch2store --executable https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/stdenv/linux/bootstrap-tools/scripts/unpack-bootstrap-tools.sh
-    let h_unpack_bootstrap_tools = "iT9CylT+P5jwNlv8UD4jAVz+EKTTCIj+tUnYpgjRbBQ"
+    let h_unpack_bootstrap_tools = "ow8ctEPXY74kphwpR0SAb2fIbZ7FmFr8EnxmPH80_sY"
         .parse::<StoreHash>()
         .unwrap();
 

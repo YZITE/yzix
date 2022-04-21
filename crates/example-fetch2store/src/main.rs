@@ -47,6 +47,13 @@ async fn main() {
         }
     }
 
-    println!("hash = {}", store::Hash::hash_complex(&dump));
+    let h = store::Hash::hash_complex(&dump);
+    println!("hash = {}", h);
+
+    if driver.has_out_hash(h).await {
+        println!("already present");
+        return;
+    }
+
     println!("res  = {:?}", driver.upload(dump).await);
 }
