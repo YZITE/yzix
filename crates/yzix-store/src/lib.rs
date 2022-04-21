@@ -77,11 +77,9 @@ impl Hash {
     /// NOTE: it is recommended to always specify the type paramter when calling
     /// this function to prevent accidential hash changes
     /// (e.g. forgot to deref or such)
-    pub fn hash_complex<T: serde::Serialize>(x: &T) -> Self {
-        let mut ser = Vec::new();
-        ciborium::ser::into_writer(x, &mut ser).unwrap();
+    pub fn hash_complex<T: yzix_ser_trait::Serialize>(x: &T) -> Self {
         let mut hasher = Self::get_hasher();
-        hasher.update(&ser[..]);
+        x.serialize(&mut hasher);
         Self::finalize_hasher(hasher)
     }
 }

@@ -4,16 +4,82 @@
 
 use super::{Error, ErrorKind};
 use camino::Utf8PathBuf;
-use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
+use yzix_ser_trait as yst;
+use yzix_visit_bytes as yvb;
 
-/// sort-of emulation of NAR using CBOR
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+/// sort-of emulation of NAR
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "lowercase", tag = "type")]
 pub enum Dump {
     Regular { executable: bool, contents: Vec<u8> },
     SymLink { target: Utf8PathBuf },
     Directory(std::collections::BTreeMap<String, Dump>),
+}
+
+// sort-of NAR serialization impl
+impl yst::Serialize for Dump {
+    fn serialize<H: yst::Update>(&self, state: &mut H) {
+        "(".serialize(state);
+        "type".serialize(state);
+        match self {
+            Dump::Regular {
+                executable,
+                contents,
+            } => {
+                "regular".serialize(state);
+                if *executable {
+                    "executable".serialize(state);
+                    "".serialize(state);
+                }
+                "contents".serialize(state);
+                contents.serialize(state);
+            }
+            Dump::SymLink { target } => {
+                "symlink".serialize(state);
+                "target".serialize(state);
+                target.as_str().serialize(state);
+            }
+            Dump::Directory(entries) => {
+                "directory".serialize(state);
+                for (k, v) in entries {
+                    for i in ["entry", "(", "name"] {
+                        i.serialize(state);
+                    }
+                    k.serialize(state);
+                    "node".serialize(state);
+                    v.serialize(state);
+                    ")".serialize(state);
+                }
+            }
+        }
+        ")".serialize(state);
+    }
+}
+
+impl yvb::Element for Dump {
+    fn accept<V: yvb::Visitor>(&self, visitor: &mut V) {
+        match self {
+            Dump::Regular { contents, .. } => visitor.visit_bytes(&contents[..]),
+            Dump::SymLink { target } => visitor.visit_bytes(target.as_str().as_bytes()),
+            Dump::Directory(entries) => {
+                entries.values().for_each(|val| val.accept(visitor));
+            }
+        }
+    }
+    fn accept_mut<V: yvb::VisitorMut>(&mut self, visitor: &mut V) {
+        match self {
+            Dump::Regular { contents, .. } => visitor.visit_bytes(&mut contents[..]),
+            Dump::SymLink { target } => {
+                let mut s = String::from(std::mem::replace(target, Utf8PathBuf::from("")));
+                s.accept_mut(visitor);
+                *target = s.into();
+            }
+            Dump::Directory(entries) => {
+                entries.values_mut().for_each(|val| val.accept_mut(visitor));
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

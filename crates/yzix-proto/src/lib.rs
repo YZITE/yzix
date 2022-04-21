@@ -7,22 +7,15 @@
     unsafe_code
 )]
 
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 pub use yzix_store as store;
 pub use yzix_strwrappers as strwrappers;
 
-use serde::{Deserialize, Serialize};
-
-use std::collections::{BTreeMap, BTreeSet};
-
 mod codec;
 pub use codec::*;
-
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub struct WorkItem {
-    pub args: Vec<String>,
-    pub envs: BTreeMap<String, String>,
-    pub outputs: BTreeSet<strwrappers::OutputName>,
-}
+mod wi;
+pub use wi::*;
 
 // maximum message length
 pub type ProtoLen = u32;

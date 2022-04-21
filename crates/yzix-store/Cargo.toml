@@ -15,14 +15,16 @@ thiserror = "1.0"
 version = "1.0"
 features = ["serde1"]
 
-[dependencies.ciborium]
-version = "0.2"
-features = ["std"]
-
 [dependencies.serde]
 version = "1.0"
 default-features = false
 features = ["derive", "std"]
+
+[dependencies.yzix-ser-trait]
+path = "../yzix-ser-trait"
+
+[dependencies.yzix-visit-bytes]
+path = "../yzix-visit-bytes"
 
 [target.'cfg(unix)'.dependencies]
 xattr = "0.2"

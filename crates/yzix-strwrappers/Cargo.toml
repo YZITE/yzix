@@ -10,3 +10,6 @@ license = "Apache-2.0 WITH LLVM-exception"
 version = "1.0"
 default-features = false
 features = ["alloc", "derive"]
+
+[dependencies.yzix-ser-trait]
+path = "../yzix-ser-trait"

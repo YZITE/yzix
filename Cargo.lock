@@ -1640,8 +1640,17 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+ "yzix-ser-trait",
  "yzix-store",
  "yzix-strwrappers",
+ "yzix-visit-bytes",
+]
+
+[[package]]
+name = "yzix-ser-trait"
+version = "0.1.0"
+dependencies = [
+ "digest",
 ]
 
 [[package]]
@@ -1656,7 +1665,6 @@ dependencies = [
  "rand",
  "serde",
  "serde_json",
- "store-ref-scanner",
  "tempfile",
  "thiserror",
  "tokio",
@@ -1666,7 +1674,9 @@ dependencies = [
  "tracing-subscriber",
  "yzix-pool",
  "yzix-proto",
+ "yzix-ser-trait",
  "yzix-store-refs",
+ "yzix-visit-bytes",
 ]
 
 [[package]]
@@ -1676,7 +1686,6 @@ dependencies = [
  "base64 0.20.0-alpha.1",
  "blake2",
  "camino",
- "ciborium",
  "filetime",
  "once_cell",
  "proptest",
@@ -1684,6 +1693,8 @@ dependencies = [
  "serde_test",
  "thiserror",
  "xattr",
+ "yzix-ser-trait",
+ "yzix-visit-bytes",
 ]
 
 [[package]]
@@ -1695,6 +1706,7 @@ dependencies = [
  "store-ref-scanner",
  "tracing",
  "yzix-store",
+ "yzix-visit-bytes",
 ]
 
 [[package]]
@@ -1702,7 +1714,12 @@ name = "yzix-strwrappers"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "yzix-ser-trait",
 ]
+
+[[package]]
+name = "yzix-visit-bytes"
+version = "0.1.0"
 
 [[package]]
 name = "zstd"

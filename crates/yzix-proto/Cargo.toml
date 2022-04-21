@@ -30,3 +30,9 @@ path = "../yzix-store"
 
 [dependencies.yzix-strwrappers]
 path = "../yzix-strwrappers"
+
+[dependencies.yzix-ser-trait]
+path = "../yzix-ser-trait"
+
+[dependencies.yzix-visit-bytes]
+path = "../yzix-visit-bytes"

@@ -11,7 +11,6 @@ oci-spec = "0.5"
 rand = "0.8"
 serde = "1.0"
 serde_json = "1.0"
-store-ref-scanner = "0.1"
 tempfile = "3.3"
 thiserror = "1.0"
 toml = "0.5"
@@ -47,5 +46,11 @@ path = "../yzix-pool"
 [dependencies.yzix-proto]
 path = "../yzix-proto"
 
+[dependencies.yzix-ser-trait]
+path = "../yzix-ser-trait"
+
 [dependencies.yzix-store-refs]
 path = "../yzix-store-refs"
+
+[dependencies.yzix-visit-bytes]
+path = "../yzix-visit-bytes"

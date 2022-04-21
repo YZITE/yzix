@@ -9,14 +9,16 @@
 )]
 
 use core::{convert, fmt};
-use serde::{Deserialize, Serialize};
 
 extern crate alloc;
 use alloc::string::String;
 
 macro_rules! make_strwrapper {
     ($name:ident ( $inp:ident ) || $errmsg:expr; { $($x:tt)* }) => {
-        #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+        #[derive(
+            Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash,
+            serde::Deserialize, serde::Serialize
+        )]
         #[serde(try_from = "String", into = "String")]
         pub struct $name(String);
 
@@ -80,6 +82,12 @@ macro_rules! make_strwrapper {
             #[inline(always)]
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.write_str(&*self.0)
+            }
+        }
+
+        impl yzix_ser_trait::Serialize for $name {
+            fn serialize<U: yzix_ser_trait::Update>(&self, state: &mut U) {
+                self.0.serialize(state);
             }
         }
     }

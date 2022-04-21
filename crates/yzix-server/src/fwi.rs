@@ -9,25 +9,20 @@ pub struct FullWorkItem {
 
 impl FullWorkItem {
     pub fn new(inner: yzix_proto::WorkItem, store_path: &camino::Utf8Path) -> Self {
-        use std::str::FromStr;
-        use store_ref_scanner as srs;
-        use yzix_proto::store::Digest;
+        use yzix_ser_trait::Serialize as _;
 
-        // to make this more effective, serialize just once
-        let mut ser = Vec::new();
-        yzix_proto::ciborium::ser::into_writer(&inner, &mut ser).unwrap();
         let mut hasher = StoreHash::get_hasher();
-        hasher.update(&ser[..]);
+        inner.serialize(&mut hasher);
         let inhash = StoreHash::finalize_hasher(hasher);
-        let refs =
-            srs::StoreRefScanner::new(&ser[..], &yzix_store_refs::build_store_spec(store_path))
-                // SAFETY: we know that only ASCII chars are possible here,
-                // and `build_store_spec` ensures that the hash is correctly truncated
-                .map(|x| StoreHash::from_str(std::str::from_utf8(x).unwrap()).unwrap())
-                .collect();
+        let stspec = yzix_store_refs::build_store_spec(store_path);
+        let mut e = yzix_store_refs::Extract {
+            spec: &stspec,
+            refs: Default::default(),
+        };
+        yzix_visit_bytes::Element::accept(&inner, &mut e);
         Self {
             inhash,
-            refs,
+            refs: e.refs,
             inner,
         }
     }

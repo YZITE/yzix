@@ -319,17 +319,16 @@ pub async fn handle_process(
             })
             .collect::<Result<_, _>>()?;
         {
-            let rwtab: BTreeMap<_, _> = outputs
-                .values()
-                .map(|&(plh, _, outhash)| (plh, outhash))
-                .collect();
-            use store_ref_scanner::StoreSpec;
-            let stspec = StoreSpec {
-                path_to_store: config.store_path.as_str(),
-                ..StoreSpec::DFL_YZIX1
+            let stspec = yzix_store_refs::build_store_spec(&config.store_path);
+            let rwtr = yzix_store_refs::Rewrite {
+                spec: &stspec,
+                rwtab: outputs
+                    .values()
+                    .map(|&(plh, _, outhash)| (plh, outhash))
+                    .collect(),
             };
             for (_, v, _) in &mut outputs.values_mut() {
-                yzix_store_refs::rewrite_in_dump(&stspec, &rwtab, v);
+                yzix_visit_bytes::Element::accept_mut(v, &mut &rwtr);
             }
         }
         Ok(outputs

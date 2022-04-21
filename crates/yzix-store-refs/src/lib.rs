@@ -4,57 +4,36 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 use store_ref_scanner::{StoreRefScanner, StoreSpec};
 use yzix_store::{Dump, Hash as StoreHash};
+use yzix_visit_bytes as yvb;
 
-pub fn extract_from_vec<'a>(
-    spec: &'a StoreSpec,
-    dat: &'a [u8],
-) -> impl Iterator<Item = StoreHash> + 'a {
-    StoreRefScanner::new(dat, spec)
-        // SAFETY: we know that only ASCII chars are possible here
-        .map(|x| StoreHash::from_str(std::str::from_utf8(x).unwrap()).unwrap())
+pub struct Extract<'a> {
+    pub spec: &'a StoreSpec<'a>,
+    pub refs: BTreeSet<StoreHash>,
 }
 
-pub fn extract_from_dump(spec: &StoreSpec, dump: &Dump, refs: &mut BTreeSet<StoreHash>) {
-    match dump {
-        Dump::Regular { contents, .. } => {
-            refs.extend(extract_from_vec(spec, contents));
-        }
-        Dump::SymLink { target } => {
-            refs.extend(extract_from_vec(spec, target.as_str().as_bytes()));
-        }
-        Dump::Directory(dir) => {
-            dir.values().for_each(|v| extract_from_dump(spec, v, refs));
-        }
+impl yvb::Visitor for Extract<'_> {
+    fn visit_bytes(&mut self, bytes: &[u8]) {
+        self.refs.extend(
+            StoreRefScanner::new(bytes, self.spec)
+                // SAFETY: we know that only ASCII chars are possible here
+                .map(|x| StoreHash::from_str(std::str::from_utf8(x).unwrap()).unwrap()),
+        );
     }
 }
 
-pub type RwTab = BTreeMap<StoreHash, StoreHash>;
-
-pub fn rewrite_in_vec(spec: &StoreSpec, rwtab: &RwTab, dat: &mut [u8]) {
-    for i in StoreRefScanner::new(dat, spec) {
-        // SAFETY: we know that only ASCII chars are possible here
-        let oldhash = StoreHash::from_str(std::str::from_utf8(i).unwrap()).unwrap();
-        if let Some(newhash) = rwtab.get(&oldhash) {
-            i.copy_from_slice(newhash.to_string().as_bytes());
-        }
-    }
+pub struct Rewrite<'a> {
+    pub spec: &'a StoreSpec<'a>,
+    pub rwtab: BTreeMap<StoreHash, StoreHash>,
 }
 
-pub fn rewrite_in_dump(spec: &StoreSpec, rwtab: &RwTab, dump: &mut Dump) {
-    match dump {
-        Dump::Regular { contents, .. } => {
-            rewrite_in_vec(spec, rwtab, contents);
-        }
-        Dump::SymLink { target } => {
-            let mut tmp_target: Vec<u8> = target.as_str().bytes().collect();
-            rewrite_in_vec(spec, rwtab, &mut tmp_target[..]);
-            *target = String::from_utf8(tmp_target)
-                .expect("illegal hash characters used")
-                .into();
-        }
-        Dump::Directory(dir) => {
-            dir.values_mut()
-                .for_each(|v| rewrite_in_dump(spec, rwtab, v));
+impl<'a> yvb::VisitorMut for &'a Rewrite<'a> {
+    fn visit_bytes(&mut self, bytes: &mut [u8]) {
+        for i in StoreRefScanner::new(bytes, self.spec) {
+            // SAFETY: we know that only ASCII chars are possible here
+            let oldhash = StoreHash::from_str(std::str::from_utf8(i).unwrap()).unwrap();
+            if let Some(newhash) = self.rwtab.get(&oldhash) {
+                i.copy_from_slice(newhash.to_string().as_bytes());
+            }
         }
     }
 }
@@ -92,10 +71,13 @@ pub fn determine_store_closure(
             } else if let Ok(dump) =
                 Dump::read_from_path(store_path.join(i.to_string()).as_std_path())
             {
-                let mut tmp_refs = BTreeSet::new();
-                extract_from_dump(&stspec, &dump, &mut tmp_refs);
-                new_refs.extend(tmp_refs.iter().copied());
-                cache.put(i, tmp_refs);
+                let mut e = Extract {
+                    spec: &stspec,
+                    refs: BTreeSet::new(),
+                };
+                yvb::Element::accept(&dump, &mut e);
+                new_refs.extend(e.refs.iter().copied());
+                cache.put(i, e.refs);
             }
         }
     }
