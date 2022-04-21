@@ -399,25 +399,32 @@ async fn main() {
                         )
                     },
                     Rk::Upload(d) => {
-                        let h = StoreHash::hash_complex::<Dump>(&d);
-                        if tasks.contains_key(&h) {
-                            Response::False
-                        } else {
-                            let p = config.store_path.join(h.to_string());
-                            if p.exists() {
+                        let config = config.clone();
+                        let store_locks = store_locks.clone();
+                        drop(tokio::spawn(async move {
+                            let h = StoreHash::hash_complex::<Dump>(&d);
+                            if !store_locks.lock().unwrap().insert(h) {
                                 Response::False
-                            } else if let Err(e) = block_in_place(|| d.write_to_path(
-                                p.as_std_path(),
-                                DumpFlags {
-                                    force: false,
-                                    make_readonly: true,
-                                },
-                            )) {
-                                Response::TaskBound(h, TaskBoundResponse::BuildError(e.into()))
                             } else {
-                                Response::Ok
+                                let p = config.store_path.join(h.to_string());
+                                let ret = if p.exists() {
+                                    Response::False
+                                } else if let Err(e) = block_in_place(|| d.write_to_path(
+                                    p.as_std_path(),
+                                    DumpFlags {
+                                        force: false,
+                                        make_readonly: true,
+                                    },
+                                )) {
+                                    Response::TaskBound(h, TaskBoundResponse::BuildError(e.into()))
+                                } else {
+                                    Response::Ok
+                                };
+                                store_locks.lock().unwrap().remove(&h);
+                                ret
                             }
-                        }
+                        }));
+                        continue;
                     },
                     Rk::HasOutHash(h) => {
                         if config.store_path.join(h.to_string()).exists() {
@@ -427,16 +434,28 @@ async fn main() {
                         }
                     },
                     Rk::Download(h) => {
-                        let dump = block_in_place(|| Dump::read_from_path(
-                            config.store_path.join(h.to_string()).as_std_path()
-                        ));
-                        match dump {
-                            Ok(dump) => Response::Dump(dump),
-                            Err(e) => Response::TaskBound(
-                                h,
-                                TaskBoundResponse::BuildError(e.into())
-                            ),
-                        }
+                        let config = config.clone();
+                        let store_locks = store_locks.clone();
+                        drop(tokio::spawn(async move {
+                            let res = block_in_place(|| {
+                                // if something currently tries to insert the path, we can't download it yet.
+                                if !matches!(store_locks.lock().map(|i| i.contains(&h)), Ok(false)) {
+                                    return Response::False;
+                                }
+                                let dump = Dump::read_from_path(
+                                    config.store_path.join(h.to_string()).as_std_path()
+                                );
+                                match dump {
+                                    Ok(dump) => Response::Dump(dump),
+                                    Err(e) => Response::TaskBound(
+                                        h,
+                                        TaskBoundResponse::BuildError(e.into())
+                                    ),
+                                }
+                            });
+                            drop(resp.send(res).await);
+                        }));
+                        continue;
                     },
                 };
                 drop(resp.send(res).await);
