@@ -403,7 +403,7 @@ async fn main() {
                         let store_locks = store_locks.clone();
                         drop(tokio::spawn(async move {
                             let h = StoreHash::hash_complex::<Dump>(&d);
-                            if !store_locks.lock().unwrap().insert(h) {
+                            let res = if !store_locks.lock().unwrap().insert(h) {
                                 Response::False
                             } else {
                                 let p = config.store_path.join(h.to_string());
@@ -422,7 +422,8 @@ async fn main() {
                                 };
                                 store_locks.lock().unwrap().remove(&h);
                                 ret
-                            }
+                            };
+                            drop(resp.send(res).await);
                         }));
                         continue;
                     },
