@@ -1,7 +1,17 @@
+use std::collections::BTreeSet;
 use tracing::{error, info};
-use yzix_client::{store::Dump, store::Hash as StoreHash, strwrappers::OutputName, Driver, WorkItem};
+use yzix_client::{
+    store::Dump, store::Hash as StoreHash, strwrappers::OutputName, Driver,
+    TaskBoundResponse as Tbr, WorkItem,
+};
 
-async fn fetchurl(driver: &Driver, url: &str, expect_hash: &str, with_path: &str, executable: bool) -> anyhow::Result<StoreHash> {
+async fn fetchurl(
+    driver: &Driver,
+    url: &str,
+    expect_hash: &str,
+    with_path: &str,
+    executable: bool,
+) -> anyhow::Result<StoreHash> {
     async fn my_fetch(url: &str) -> Result<Vec<u8>, reqwest::Error> {
         Ok(reqwest::get(url).await?.bytes().await?.as_ref().to_vec())
     }
@@ -27,8 +37,57 @@ async fn fetchurl(driver: &Driver, url: &str, expect_hash: &str, with_path: &str
 
     let h2 = StoreHash::hash_complex(&dump);
     if h2 != h {
-        error!("fetchurl ({}): hash mismatch, expected = {}, got = {}", url, expect_hash, h2);
-        anyhow::bail!("hash mismatch");
+        error!(
+            "fetchurl ({}): hash mismatch, expected = {}, got = {}",
+            url, expect_hash, h2
+        );
+        anyhow::bail!("hash mismatch for url ({})", url);
+    }
+
+    let x = driver.upload(dump).await;
+    info!("fetchurl ({}): {:?}", url, x);
+    if !x.is_ok() {
+        anyhow::bail!("fetchurl ({}) failed: {:?}", url, x);
+    }
+    Ok(h)
+}
+
+fn mk_outputs(elems: Vec<&str>) -> BTreeSet<OutputName> {
+    elems
+        .into_iter()
+        .map(|i| OutputName::new(i.to_string()).unwrap())
+        .collect()
+}
+
+async fn gen_wrappers(driver: &Driver, store_path: &str, bootstrap_tools: StoreHash) -> anyhow::Result<StoreHash> {
+    fn gen_wrapper(store_path: &str, bootstrap_tools: StoreHash, element: &str) -> Dump {
+        Dump::Regular {
+            executable: true,
+            contents: format!(
+                "#!{stp}/{bst}/bin/bash\nexec {stp}/{bst}/bin/{elem} $YZIX_WRAPPER_{elem}_ARGS \"$@\"\n",
+                stp = store_path,
+                bst = bootstrap_tools,
+                elem = element,
+            )
+            .into_bytes(),
+        }
+    }
+
+    let mut dump = Dump::Directory(
+        ["gcc", "g++"]
+            .into_iter()
+            .map(|i| (i.to_string(), gen_wrapper(store_path, bootstrap_tools, i)))
+            .collect(),
+    );
+    dump = Dump::Directory(std::iter::once(("bin".to_string(), dump)).collect());
+
+    let h = StoreHash::hash_complex(&dump);
+
+    if !driver.has_out_hash(h).await {
+        let x = driver.upload(dump).await;
+        if !x.is_ok() {
+            anyhow::bail!("genWrappers failed: {:?}", x);
+        }
     }
 
     Ok(h)
@@ -74,7 +133,7 @@ async fn main() -> anyhow::Result<()> {
         false,
     );
 
-    // $ example-fetch2store --executable 
+    // $ example-fetch2store --executable
     let h_unpack_bootstrap_tools = fetchurl(
         &driver,
         "https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/stdenv/linux/bootstrap-tools/scripts/unpack-bootstrap-tools.sh",
@@ -85,8 +144,10 @@ async fn main() -> anyhow::Result<()> {
 
     /* === bootstrap stage 0 === */
 
-    let (h_busybox, h_bootstrap_tools, h_unpack_bootstrap_tools) = tokio::join!(h_busybox, h_bootstrap_tools, h_unpack_bootstrap_tools);
-    let (h_busybox, h_bootstrap_tools, h_unpack_bootstrap_tools) = (h_busybox?, h_bootstrap_tools?, h_unpack_bootstrap_tools?);
+    let (h_busybox, h_bootstrap_tools, h_unpack_bootstrap_tools) =
+        tokio::join!(h_busybox, h_bootstrap_tools, h_unpack_bootstrap_tools);
+    let (h_busybox, h_bootstrap_tools, h_unpack_bootstrap_tools) =
+        (h_busybox?, h_bootstrap_tools?, h_unpack_bootstrap_tools?);
     let bb = format!("{}/{}/busybox", store_path, h_busybox);
 
     let bootstrap_tools = driver
@@ -104,14 +165,19 @@ async fn main() -> anyhow::Result<()> {
                 "-e".to_string(),
                 format!("{}/{}", store_path, h_unpack_bootstrap_tools),
             ],
-            outputs: ["out"]
-                .into_iter()
-                .map(|i| OutputName::new(i.to_string()).unwrap())
-                .collect(),
+            outputs: mk_outputs(vec!["out"]),
         })
         .await;
 
-    println!("bootstrap_tools = {:?}", bootstrap_tools);
+    info!("bootstrap_tools = {:?}", bootstrap_tools);
+
+    let bootstrap_tools = match bootstrap_tools {
+        Tbr::BuildSuccess(outs) => outs["out"],
+        _ => anyhow::bail!("unable to build bootstrap tools"),
+    };
+
+    let wrappers = gen_wrappers(&driver, store_path, bootstrap_tools).await?;
+    info!("wrappers = {:?}", bootstrap_tools);
 
     Ok(())
 }

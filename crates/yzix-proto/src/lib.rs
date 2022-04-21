@@ -40,6 +40,18 @@ pub enum Response {
     TaskBound(store::Hash, TaskBoundResponse),
 }
 
+impl Response {
+    #[inline]
+    pub fn is_ok(&self) -> bool {
+        matches!(
+            self,
+            Response::Ok
+                | Response::Dump(_)
+                | Response::TaskBound(_, TaskBoundResponse::BuildSuccess(_))
+        )
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum TaskBoundResponse {
     Queued,
@@ -49,6 +61,7 @@ pub enum TaskBoundResponse {
 }
 
 impl TaskBoundResponse {
+    #[inline]
     pub fn task_finished(&self) -> bool {
         matches!(self, Self::BuildSuccess(_) | Self::BuildError(_))
     }
