@@ -174,7 +174,7 @@ impl Driver {
                             orig_req: format!("{}", xmsg),
                             answ_chan,
                         });
-                        tracing::debug!("send request: {:?}", xmsg);
+                        tracing::debug!("send request: {}", xmsg);
                         if let Err(e) = wbs.send(xmsg).await {
                             tracing::error!("connection error: {}", e);
                             break;
