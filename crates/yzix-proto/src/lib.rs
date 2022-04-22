@@ -7,6 +7,7 @@
     unsafe_code
 )]
 
+use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 pub use yzix_store as store;
@@ -24,6 +25,7 @@ pub const NULL_LEN: [u8; std::mem::size_of::<ProtoLen>()] = [0u8; std::mem::size
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Request {
     UnsubscribeAll,
+    GetStorePath,
     Kill(store::Hash),
     SubmitTask { item: WorkItem, subscribe2log: bool },
     Upload(store::Dump),
@@ -31,11 +33,34 @@ pub enum Request {
     Download(store::Hash),
 }
 
+impl fmt::Display for Request {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Request::UnsubscribeAll => write!(f, "UnsubscribeAll"),
+            Request::GetStorePath => write!(f, "GetStorePath"),
+            Request::Kill(h) => write!(f, "Kill({})", h),
+            Request::SubmitTask {
+                item,
+                subscribe2log,
+            } => write!(
+                f,
+                "SubmitTask{}({:?})",
+                if *subscribe2log { "+log" } else { "" },
+                item
+            ),
+            Request::Upload(d) => write!(f, "Upload(...@ {})", store::Hash::hash_complex(d)),
+            Request::HasOutHash(h) => write!(f, "HasOutHash({})", h),
+            Request::Download(h) => write!(f, "Download({})", h),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Response {
     Ok,
     False,
     LogError,
+    Text(String),
     Dump(store::Dump),
     TaskBound(store::Hash, TaskBoundResponse),
 }
@@ -46,6 +71,7 @@ impl Response {
         matches!(
             self,
             Response::Ok
+                | Response::Text(_)
                 | Response::Dump(_)
                 | Response::TaskBound(_, TaskBoundResponse::BuildSuccess(_))
         )

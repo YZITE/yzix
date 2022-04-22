@@ -66,7 +66,7 @@ pub async fn handle_client(
 
     let handle_input = async move {
         loop {
-            use yzix_proto::Request as Req;
+            use yzix_proto::{Request as Req, Response};
             let req: Req = match stream.next().await {
                 Some(Ok(x)) => x,
                 Some(Err(e)) => {
@@ -78,6 +78,16 @@ pub async fn handle_client(
             let req = match req {
                 Req::UnsubscribeAll => {
                     unsubscr.notify_one();
+                    None
+                }
+                Req::GetStorePath => {
+                    if resp_s
+                        .send(Response::Text(config.store_path.as_str().to_string()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
                     None
                 }
                 Req::SubmitTask {
@@ -108,6 +118,7 @@ pub async fn handle_client(
                 }
             }
         }
+        tracing::info!("client disconnected");
     };
 
     let handle_output = async move {

@@ -113,7 +113,6 @@ async fn gen_wrappers(
 async fn main() -> anyhow::Result<()> {
     /* === environment setup === */
 
-    let store_path = "/yzixs";
     let server_addr = std::env::var("YZIX_SERVER_ADDR").expect("YZIX_SERVER_ADDR env var not set");
     let bearer_token =
         std::env::var("YZIX_BEARER_TOKEN").expect("YZIX_BEARER_TOKEN env var not set");
@@ -130,6 +129,8 @@ async fn main() -> anyhow::Result<()> {
     let driver = Driver::new(stream).await;
 
     /* === seed === */
+
+    let store_path = driver.store_path().await;
 
     // $ example-fetch2store --executable --with-path busybox http://tarballs.nixos.org/stdenv-linux/i686/4907fc9e8d0d82b28b3c56e3a478a2882f1d700f/busybox
     let h_busybox = fetchurl(
@@ -189,7 +190,7 @@ async fn main() -> anyhow::Result<()> {
         _ => anyhow::bail!("unable to build bootstrap tools"),
     };
 
-    let wrappers = gen_wrappers(&driver, store_path, bootstrap_tools).await?;
+    let wrappers = gen_wrappers(&driver, &store_path, bootstrap_tools).await?;
     info!("wrappers = {:?}", wrappers);
 
     // imported from from scratchix

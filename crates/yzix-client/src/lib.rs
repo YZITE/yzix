@@ -20,6 +20,9 @@ pub struct Driver {
 
 #[derive(Debug)]
 enum WorkMessage {
+    GetStorePath {
+        answ_chan: oneshot::Sender<Response>,
+    },
     SubmitTask {
         data: WorkItem,
         answ_chan: oneshot::Sender<TaskBoundResponse>,
@@ -41,7 +44,7 @@ enum WorkMessage {
 /// represents an in-flight server request, which expects a sequential response.
 #[derive(Debug)]
 struct Inflight {
-    orig_req: Request,
+    orig_req: String,
     answ_chan: oneshot::Sender<Response>,
 }
 
@@ -92,6 +95,8 @@ impl Driver {
                             },
                             _ => {
                                 let (xmsg, answ_chan) = match msg {
+                                    WorkMessage::GetStorePath { answ_chan } =>
+                                        (Req::GetStorePath, answ_chan),
                                     WorkMessage::Upload { data, answ_chan } =>
                                         (Req::Upload(data), answ_chan),
                                     WorkMessage::HasOutHash { data, answ_chan } =>
@@ -139,12 +144,7 @@ impl Driver {
                             Resp::TaskBound(tid, tbr) => {
                                 // NOTE: has the disadvantage that this is on a best-effort basis
                                 if let Some(x) = inflight_info.take() {
-                                    let tfmt = match x.orig_req {
-                                        Req::UnsubscribeAll => unreachable!(),
-                                        Req::Upload(d) => format!("Upload(...@ {})", store::Hash::hash_complex(&d)),
-                                        _ => format!("{:?}", x.orig_req),
-                                    };
-                                    tracing::debug!("{}: {} -> {:?}", tid, tfmt, tbr);
+                                    tracing::debug!("{}: {} -> {:?}", tid, x.orig_req, tbr);
                                     drop::<Result<_, _>>(x.answ_chan.send(Resp::TaskBound(tid, tbr)));
                                 } else {
                                     tracing::warn!("{}: {:?} (unhandled)", tid, tbr);
@@ -156,14 +156,9 @@ impl Driver {
                                 );
                                 break;
                             }
-                            Resp::Ok | Resp::False | Resp::Dump(_) => {
+                            Resp::Ok | Resp::False | Resp::Text(_) | Resp::Dump(_) => {
                                 if let Some(x) = inflight_info.take() {
-                                    let tfmt = match x.orig_req {
-                                        Req::UnsubscribeAll => unreachable!(),
-                                        Req::Upload(d) => format!("Upload(...@ {})", store::Hash::hash_complex(&d)),
-                                        _ => format!("{:?}", x.orig_req),
-                                    };
-                                    tracing::debug!("{} -> {:?}", tfmt, msg);
+                                    tracing::debug!("{} -> {:?}", x.orig_req, msg);
                                     drop::<Result<_, _>>(x.answ_chan.send(msg));
                                 } else {
                                     tracing::warn!("{:?} (unhandled)", msg);
@@ -176,7 +171,7 @@ impl Driver {
                 if inflight_info.is_none() {
                     if let Some((xmsg, answ_chan)) = backlog.pop_front() {
                         inflight_info = Some(Inflight {
-                            orig_req: xmsg.clone(),
+                            orig_req: format!("{}", xmsg),
                             answ_chan,
                         });
                         tracing::debug!("send request: {:?}", xmsg);
@@ -190,6 +185,17 @@ impl Driver {
         });
 
         Self { wchan_s }
+    }
+
+    pub async fn store_path(&self) -> String {
+        let (answ_chan, answ_get) = oneshot::channel();
+        self.wchan_s
+            .send(WorkMessage::GetStorePath { answ_chan })
+            .unwrap();
+        match answ_get.await.unwrap() {
+            Response::Text(t) => t,
+            r => panic!("invalid GetStorePath response: {:?}", r),
+        }
     }
 
     pub async fn run_task(&self, data: WorkItem) -> TaskBoundResponse {
