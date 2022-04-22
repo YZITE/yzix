@@ -1,3 +1,4 @@
+use indoc::indoc;
 use std::collections::{BTreeMap, BTreeSet};
 use tracing::{error, info};
 use yzix_client::{
@@ -85,7 +86,7 @@ async fn gen_wrappers(
         Dump::Regular {
             executable: true,
             contents: format!(
-                "#!{stp}/{bst}/bin/bash\nexec {stp}/{bst}/bin/{elem} $YZIX_WRAPPER_{elem}_ARGS \"$@\"\n",
+                "#!{stp}/{bst}/bin/bash\nexec {stp}/{bst}/bin/{elem} $NIX_WRAPPER_{elem}_ARGS \"$@\"\n",
                 stp = store_path,
                 bst = bootstrap_tools,
                 elem = element,
@@ -94,12 +95,16 @@ async fn gen_wrappers(
         }
     }
 
-    let mut dump = Dump::Directory(
-        ["gcc", "g++"]
-            .into_iter()
-            .map(|i| (i.to_string(), gen_wrapper(store_path, bootstrap_tools, i)))
-            .collect(),
-    );
+    let mut dir: BTreeMap<_, _> = ["gcc", "g++"]
+        .into_iter()
+        .map(|i| (i.to_string(), gen_wrapper(store_path, bootstrap_tools, i)))
+        .collect();
+
+    dir.insert("cc".to_string(), dir["gcc"].clone());
+    dir.insert("cpp".to_string(), dir["g++"].clone());
+    dir.insert("cxx".to_string(), dir["g++"].clone());
+
+    let mut dump = Dump::Directory(dir);
     dump = Dump::Directory(std::iter::once(("bin".to_string(), dump)).collect());
     smart_upload(driver, dump, "genWrappers").await
 }
@@ -193,7 +198,10 @@ async fn main() -> anyhow::Result<()> {
         Dump::Regular {
             executable: true,
             contents: include_str!("mkDerivation-builder.sh")
-                .replace("@bootstrapTools@", &format!("{}/{}", store_path, bootstrap_tools))
+                .replace(
+                    "@bootstrapTools@",
+                    &format!("{}/{}", store_path, bootstrap_tools),
+                )
                 .replace("@wrappers@", &format!("{}/{}", store_path, wrappers))
                 .into_bytes(),
         },
@@ -210,13 +218,27 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    let kernel_headers_buildsh = smart_upload(&driver, Dump::Regular {
-        executable: false,
-        contents: format!(
-            "make headers\nmkdir -p $out\ncp -r usr/include $out\nfind $out -type f ! -name '*.h' -delete\n",
-        ).into_bytes(),
-    },
-    "kernel_headers_buildsh").await?;
+    let kernel_headers_script = indoc! {"
+        make ARCH=x86 headers
+        mkdir -p $out
+        cp -r usr/include $out
+        find $out -type f ! -name '*.h' -delete
+    "};
+    let kernel_headers_buildsh = smart_upload(
+        &driver,
+        Dump::Regular {
+            executable: true,
+            contents: format!(
+                "#!{stp}/{bst}/bin/bash\n{mscr}",
+                stp = store_path,
+                bst = bootstrap_tools,
+                mscr = kernel_headers_script,
+            )
+            .into_bytes(),
+        },
+        "kernel_headers_buildsh",
+    )
+    .await?;
 
     let kernel_headers = driver
         .run_task(WorkItem {
