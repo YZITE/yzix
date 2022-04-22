@@ -205,11 +205,6 @@ pub fn random_name() -> String {
         .collect::<String>()
 }
 
-fn dfl_env_var(envs: &mut BTreeMap<String, String>, key: &str, value: &str) {
-    envs.entry(key.to_string())
-        .or_insert_with(|| value.to_string());
-}
-
 #[inline]
 pub fn placeholder(name: &OutputName) -> StoreHash {
     StoreHash::hash_complex::<OutputName>(name)
@@ -245,16 +240,31 @@ pub async fn handle_process(
     std::fs::create_dir_all(rootdir.join("build"))?;
     std::fs::create_dir_all(rootdir.join("tmp"))?;
 
-    dfl_env_var(&mut envs, "HOME", "/homeless-shelter");
-    //dfl_env_var(&mut envs, "LC_ALL", "C.UTF-8");
-    dfl_env_var(&mut envs, "LC_ALL", "C");
-    dfl_env_var(&mut envs, "NIX_BUILD_TOP", "/build");
-    dfl_env_var(&mut envs, "NIX_STORE", config.store_path.as_str());
-    dfl_env_var(&mut envs, "TEMP", "/tmp");
-    dfl_env_var(&mut envs, "TEMPDIR", "/tmp");
-    dfl_env_var(&mut envs, "TMP", "/tmp");
-    dfl_env_var(&mut envs, "TMPDIR", "/tmp");
-    dfl_env_var(&mut envs, "TZ", "UTC");
+    for (key, value) in [
+        ("HOME", "/homeless-shelter"),
+        //("LC_ALL", "C.UTF-8"),
+        ("LC_ALL", "C"),
+        ("NIX_BUILD_TOP", "/build"),
+        ("NIX_STORE", config.store_path.as_str()),
+
+        // from nixpkgs/pkgs/stdenv/generic/setup.sh:
+        /****
+          Set a fallback default value for SOURCE_DATE_EPOCH, used by some build tools
+          to provide a deterministic substitute for the "current" time. Note that
+          315532800 = 1980-01-01 12:00:00. We use this date because python's wheel
+          implementation uses zip archive and zip does not support dates going back to
+          1970.
+        ****/
+        ("SOURCE_DATE_EPOCH", "315532800"),
+
+        // trigger colored output in various tools
+        ("TERM", "xterm-256color"),
+
+        ("TZ", "UTC"),
+    ] {
+        envs.entry(key.to_string())
+            .or_insert_with(|| value.to_string());
+    }
 
     let outputs: BTreeMap<_, _> = outputs
         .into_iter()
