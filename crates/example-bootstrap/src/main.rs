@@ -32,8 +32,10 @@ async fn fetchurl(
         contents,
     };
 
-    for i in with_path.split('/') {
-        dump = Dump::Directory(std::iter::once((i.to_string(), dump)).collect());
+    if !with_path.is_empty() {
+        for i in with_path.split('/') {
+            dump = Dump::Directory(std::iter::once((i.to_string(), dump)).collect());
+        }
     }
 
     let h2 = StoreHash::hash_complex(&dump);
@@ -132,7 +134,6 @@ async fn main() -> anyhow::Result<()> {
 
     let store_path = driver.store_path().await;
 
-    // $ example-fetch2store --executable --with-path busybox http://tarballs.nixos.org/stdenv-linux/i686/4907fc9e8d0d82b28b3c56e3a478a2882f1d700f/busybox
     let h_busybox = fetchurl(
         &driver,
         "http://tarballs.nixos.org/stdenv-linux/i686/4907fc9e8d0d82b28b3c56e3a478a2882f1d700f/busybox",
@@ -141,7 +142,6 @@ async fn main() -> anyhow::Result<()> {
         true,
     );
 
-    // $ example-fetch2store http://tarballs.nixos.org/stdenv-linux/i686/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz
     let h_bootstrap_tools = fetchurl(
         &driver,
         "http://tarballs.nixos.org/stdenv-linux/i686/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz",
@@ -150,7 +150,6 @@ async fn main() -> anyhow::Result<()> {
         false,
     );
 
-    // $ example-fetch2store --executable
     let h_unpack_bootstrap_tools = fetchurl(
         &driver,
         "https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/stdenv/linux/bootstrap-tools/scripts/unpack-bootstrap-tools.sh",
