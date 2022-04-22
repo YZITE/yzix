@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use tracing::{error, info};
 use yzix_client::{
     store::Dump, store::Hash as StoreHash, strwrappers::OutputName, Driver,
@@ -52,6 +52,10 @@ async fn fetchurl(
     Ok(h)
 }
 
+fn mk_envs(elems: Vec<(&str, String)>) -> BTreeMap<String, String> {
+    elems.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
+}
+
 fn mk_outputs(elems: Vec<&str>) -> BTreeSet<OutputName> {
     elems
         .into_iter()
@@ -59,7 +63,24 @@ fn mk_outputs(elems: Vec<&str>) -> BTreeSet<OutputName> {
         .collect()
 }
 
-async fn gen_wrappers(driver: &Driver, store_path: &str, bootstrap_tools: StoreHash) -> anyhow::Result<StoreHash> {
+async fn smart_upload(driver: &Driver, dump: Dump, name: &str) -> anyhow::Result<StoreHash> {
+    let h = StoreHash::hash_complex(&dump);
+
+    if !driver.has_out_hash(h).await {
+        let x = driver.upload(dump).await;
+        if !x.is_ok() {
+            anyhow::bail!("smart_upload failed @ {}: {:?}", name, x);
+        }
+    }
+
+    Ok(h)
+}
+
+async fn gen_wrappers(
+    driver: &Driver,
+    store_path: &str,
+    bootstrap_tools: StoreHash,
+) -> anyhow::Result<StoreHash> {
     fn gen_wrapper(store_path: &str, bootstrap_tools: StoreHash, element: &str) -> Dump {
         Dump::Regular {
             executable: true,
@@ -80,17 +101,7 @@ async fn gen_wrappers(driver: &Driver, store_path: &str, bootstrap_tools: StoreH
             .collect(),
     );
     dump = Dump::Directory(std::iter::once(("bin".to_string(), dump)).collect());
-
-    let h = StoreHash::hash_complex(&dump);
-
-    if !driver.has_out_hash(h).await {
-        let x = driver.upload(dump).await;
-        if !x.is_ok() {
-            anyhow::bail!("genWrappers failed: {:?}", x);
-        }
-    }
-
-    Ok(h)
+    smart_upload(driver, dump, "genWrappers").await
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -152,13 +163,10 @@ async fn main() -> anyhow::Result<()> {
 
     let bootstrap_tools = driver
         .run_task(WorkItem {
-            envs: [
+            envs: mk_envs(vec![
                 ("builder", bb.clone()),
                 ("tarball", format!("{}/{}", store_path, h_bootstrap_tools)),
-            ]
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect(),
+            ]),
             args: vec![
                 bb.clone(),
                 "ash".to_string(),
@@ -177,7 +185,59 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let wrappers = gen_wrappers(&driver, store_path, bootstrap_tools).await?;
-    info!("wrappers = {:?}", bootstrap_tools);
+    info!("wrappers = {:?}", wrappers);
+
+    // imported from from scratchix
+    let buildsh = smart_upload(
+        &driver,
+        Dump::Regular {
+            executable: true,
+            contents: include_str!("mkDerivation-builder.sh")
+                .replace("@bootstrapTools@", &format!("{}/{}", store_path, bootstrap_tools))
+                .replace("@wrappers@", &format!("{}/{}", store_path, wrappers))
+                .into_bytes(),
+        },
+        "buildsh",
+    )
+    .await?;
+
+    let kernel_headers_src = fetchurl(
+        &driver,
+        "https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.16.tar.xz",
+        "Z6afPd9StYWqNcEaB6Ax1kXor6pZilBRHLRvKD+GWjM",
+        "",
+        false,
+    )
+    .await?;
+
+    let kernel_headers_buildsh = smart_upload(&driver, Dump::Regular {
+        executable: false,
+        contents: format!(
+            "make headers\nmkdir -p $out\ncp -r usr/include $out\nfind $out -type f ! -name '*.h' -delete\n",
+        ).into_bytes(),
+    },
+    "kernel_headers_buildsh").await?;
+
+    let kernel_headers = driver
+        .run_task(WorkItem {
+            envs: mk_envs(vec![(
+                "src",
+                format!("{}/{}", store_path, kernel_headers_src),
+            )]),
+            args: vec![
+                format!("{}/{}", store_path, buildsh),
+                format!("{}/{}", store_path, kernel_headers_buildsh),
+            ],
+            outputs: mk_outputs(vec!["out"]),
+        })
+        .await;
+
+    info!("kernel_headers = {:?}", kernel_headers);
+
+    let kernel_headers = match kernel_headers {
+        Tbr::BuildSuccess(outs) => outs["out"],
+        _ => anyhow::bail!("unable to build kernel headers"),
+    };
 
     Ok(())
 }
