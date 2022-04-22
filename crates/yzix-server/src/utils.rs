@@ -161,7 +161,7 @@ async fn build_linux_ocirt_spec(
                 )
                 .args(args)
                 .env(env)
-                .cwd("/")
+                .cwd("/build")
                 .capabilities(
                     osr::LinuxCapabilitiesBuilder::default()
                         .bounding(caps.clone())
@@ -242,8 +242,18 @@ pub async fn handle_process(
     let logoutput = config.store_path.join(format!("{}.log.zst", inhash));
 
     std::fs::create_dir_all(&rootdir)?;
+    std::fs::create_dir_all(rootdir.join("build"))?;
+    std::fs::create_dir_all(rootdir.join("tmp"))?;
 
-    dfl_env_var(&mut envs, "LC_ALL", "C.UTF-8");
+    dfl_env_var(&mut envs, "HOME", "/homeless-shelter");
+    //dfl_env_var(&mut envs, "LC_ALL", "C.UTF-8");
+    dfl_env_var(&mut envs, "LC_ALL", "C");
+    dfl_env_var(&mut envs, "NIX_BUILD_TOP", "/build");
+    dfl_env_var(&mut envs, "NIX_STORE", config.store_path.as_str());
+    dfl_env_var(&mut envs, "TEMP", "/tmp");
+    dfl_env_var(&mut envs, "TEMPDIR", "/tmp");
+    dfl_env_var(&mut envs, "TMP", "/tmp");
+    dfl_env_var(&mut envs, "TMPDIR", "/tmp");
     dfl_env_var(&mut envs, "TZ", "UTC");
 
     let outputs: BTreeMap<_, _> = outputs
