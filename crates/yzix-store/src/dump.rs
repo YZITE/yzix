@@ -10,7 +10,7 @@ use yzix_visit_bytes as yvb;
 
 /// sort-of emulation of NAR
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "lowercase", tag = "type")]
+#[serde(rename_all = "lowercase")]
 pub enum Dump {
     Regular { executable: bool, contents: Vec<u8> },
     SymLink { target: Utf8PathBuf },

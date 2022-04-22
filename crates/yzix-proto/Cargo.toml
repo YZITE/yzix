@@ -5,14 +5,11 @@ edition = "2021"
 license = "Apache-2.0 WITH LLVM-exception"
 
 [dependencies]
+bincode = "1.3"
 bytes = "1.1"
 futures-core = "0.3"
 futures-sink = "0.3"
 thiserror = "1.0"
-
-[dependencies.ciborium]
-version = "0.2"
-features = ["std"]
 
 [dependencies.serde]
 version = "1.0"

@@ -46,11 +46,11 @@ pub async fn handle_client(
         if stream.read_exact(&mut buf[..]).await.is_err() {
             return;
         }
-        let bearer_token: String = match yzix_proto::ciborium::de::from_reader(&buf[..]) {
+        let bearer_token = match std::str::from_utf8(&buf[..]) {
             Ok(x) => x,
             Err(_) => return,
         };
-        if !config.bearer_tokens.contains(&bearer_token) {
+        if !config.bearer_tokens.contains(bearer_token) {
             return;
         }
     }
@@ -171,9 +171,7 @@ pub async fn handle_client(
 
             if let Err(e) = sink.send(msg).await {
                 tracing::error!("client comm error (while sending): {}", e);
-                if let yzix_proto::ciborium::ser::Error::Io(_) = e {
-                    break;
-                }
+                break;
             }
         }
 

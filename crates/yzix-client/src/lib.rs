@@ -234,10 +234,9 @@ impl Driver {
 pub async fn do_auth(
     stream: &mut TcpStream,
     bearer_token: &str,
-) -> Result<(), ciborium::ser::Error<std::io::Error>> {
+) -> std::io::Result<()> {
     use tokio::io::AsyncWriteExt;
-    let mut buf = Vec::<u8>::new();
-    ciborium::ser::into_writer(bearer_token, &mut buf)?;
+    let buf = bearer_token.to_string().into_bytes();
     stream
         .write_all(&ProtoLen::try_from(buf.len()).unwrap().to_le_bytes()[..])
         .await?;

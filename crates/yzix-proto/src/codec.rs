@@ -7,8 +7,6 @@ use futures_sink::Sink;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{Framed, LengthDelimitedCodec as Ldc};
 
-pub use ciborium;
-
 #[must_use = "streams/sinks do nothing unless polled"]
 #[derive(Debug)]
 pub struct WrappedByteStream<T: Unpin, In, Out>(Framed<T, Ldc>, PhantomData<fn(In) -> Out>);
@@ -36,12 +34,12 @@ where
     T: AsyncRead + Unpin,
     Out: for<'a> serde::Deserialize<'a>,
 {
-    type Item = Result<Out, ciborium::de::Error<std::io::Error>>;
+    type Item = Result<Out, bincode::Error>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         Self::inner(self).poll_next(cx).map(|item| {
             item.map(|item2| {
-                let item3: Out = ciborium::de::from_reader(item2?.as_ref())?;
+                let item3: Out = bincode::deserialize(item2?.as_ref())?;
                 Ok(item3)
             })
         })
@@ -57,7 +55,7 @@ where
     T: AsyncWrite + Unpin,
     In: serde::Serialize,
 {
-    type Error = ciborium::ser::Error<std::io::Error>;
+    type Error = bincode::Error;
 
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Self::inner(self).poll_ready(cx).map_err(|e| e.into())
@@ -65,8 +63,7 @@ where
 
     // use Item without borrowing, because we otherwise get lifetime conflicts...
     fn start_send(self: Pin<&mut Self>, item: In) -> Result<(), Self::Error> {
-        let mut buf = Vec::new();
-        ciborium::ser::into_writer(&item, &mut buf)?;
+        let buf = bincode::serialize(&item)?;
         Self::inner(self)
             .start_send(Bytes::from(buf))
             .map_err(|e| e.into())
