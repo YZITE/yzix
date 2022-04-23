@@ -38,9 +38,6 @@ path = "../yzix-pool"
 [dependencies.yzix-proto-core]
 path = "../yzix-proto-core"
 
-[dependencies.yzix-ser-trait]
-path = "../yzix-ser-trait"
-
 [dependencies.yzix-store-refs]
 path = "../yzix-store-refs"
 

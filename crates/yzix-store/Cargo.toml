@@ -15,13 +15,14 @@ thiserror = "1.0"
 version = "1.0"
 features = ["serde1"]
 
+[dependencies.digest]
+version = "0.10"
+default-features = false
+
 [dependencies.serde]
 version = "1.0"
 default-features = false
 features = ["derive", "std"]
-
-[dependencies.yzix-ser-trait]
-path = "../yzix-ser-trait"
 
 [dependencies.yzix-visit-bytes]
 path = "../yzix-visit-bytes"

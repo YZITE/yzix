@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use yzix_ser_trait as yst;
+use yzix_store as ys;
 use yzix_visit_bytes as yvb;
 
 #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -9,8 +9,8 @@ pub struct WorkItem {
     pub outputs: BTreeSet<crate::OutputName>,
 }
 
-impl yst::Serialize for WorkItem {
-    fn serialize<U: yst::Update>(&self, state: &mut U) {
+impl ys::Serialize for WorkItem {
+    fn serialize<U: ys::Update>(&self, state: &mut U) {
         "(".serialize(state);
         "workitem".serialize(state);
         "args".serialize(state);

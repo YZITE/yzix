@@ -73,8 +73,8 @@ macro_rules! make_strwrapper {
             }
         }
 
-        impl yzix_ser_trait::Serialize for $name {
-            fn serialize<U: yzix_ser_trait::Update>(&self, state: &mut U) {
+        impl yzix_store::Serialize for $name {
+            fn serialize<U: yzix_store::Update>(&self, state: &mut U) {
                 self.0.serialize(state);
             }
         }

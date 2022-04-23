@@ -9,7 +9,7 @@ pub struct FullWorkItem {
 
 impl FullWorkItem {
     pub fn new(inner: WorkItem, store_path: &camino::Utf8Path) -> Self {
-        use yzix_ser_trait::Serialize as _;
+        use yzix_proto_core::Serialize as _;
 
         let mut hasher = StoreHash::get_hasher();
         inner.serialize(&mut hasher);

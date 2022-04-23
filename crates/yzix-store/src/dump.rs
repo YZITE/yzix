@@ -5,7 +5,6 @@
 use super::{Error, ErrorKind};
 use camino::Utf8PathBuf;
 use std::{fs, path::Path};
-use yzix_ser_trait as yst;
 use yzix_visit_bytes as yvb;
 
 /// sort-of emulation of NAR
@@ -18,8 +17,8 @@ pub enum Dump {
 }
 
 // sort-of NAR serialization impl
-impl yst::Serialize for Dump {
-    fn serialize<H: yst::Update>(&self, state: &mut H) {
+impl crate::Serialize for Dump {
+    fn serialize<H: crate::Update>(&self, state: &mut H) {
         "(".serialize(state);
         "type".serialize(state);
         match self {

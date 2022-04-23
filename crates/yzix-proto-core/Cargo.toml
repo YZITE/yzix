@@ -11,9 +11,6 @@ thiserror = "1.0"
 version = "1.0"
 features = ["derive"]
 
-[dependencies.yzix-ser-trait]
-path = "../yzix-ser-trait"
-
 [dependencies.yzix-store]
 path = "../yzix-store"
 
