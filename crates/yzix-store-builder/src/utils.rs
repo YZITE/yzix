@@ -338,8 +338,8 @@ pub async fn handle_process(
             })
             .collect::<Result<_, _>>()?;
         {
-            let stspec = yzix_store_refs::build_store_spec(store_path);
-            let rwtr = yzix_store_refs::Rewrite {
+            let stspec = crate::store_refs::build_store_spec(store_path);
+            let rwtr = crate::store_refs::Rewrite {
                 spec: &stspec,
                 rwtab: outputs
                     .values()

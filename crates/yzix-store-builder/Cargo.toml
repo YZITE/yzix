@@ -7,10 +7,12 @@ license = "Apache-2.0 WITH LLVM-exception"
 
 [dependencies]
 camino = "1.0"
+lru = "0.7"
 oci-spec = "0.5"
 rand = "0.8"
 serde = "1.0"
 serde_json = "1.0"
+store-ref-scanner = "0.1"
 tempfile = "3.3"
 thiserror = "1.0"
 tracing = "0.1"
@@ -37,6 +39,3 @@ path = "../yzix-pool"
 
 [dependencies.yzix-proto-core]
 path = "../yzix-proto-core"
-
-[dependencies.yzix-store-refs]
-path = "../yzix-store-refs"

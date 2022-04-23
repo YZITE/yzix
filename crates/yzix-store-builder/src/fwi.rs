@@ -14,8 +14,8 @@ impl FullWorkItem {
         let mut hasher = StoreHash::get_hasher();
         inner.serialize(&mut hasher);
         let inhash = StoreHash::finalize_hasher(hasher);
-        let stspec = yzix_store_refs::build_store_spec(store_path);
-        let mut e = yzix_store_refs::Extract {
+        let stspec = crate::store_refs::build_store_spec(store_path);
+        let mut e = crate::store_refs::Extract {
             spec: &stspec,
             refs: Default::default(),
         };

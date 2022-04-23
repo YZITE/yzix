@@ -21,6 +21,7 @@ use yzix_proto_core::{Dump, DumpFlags, StoreError, StoreHash, TaskBoundResponse}
 mod fwi;
 use fwi::FullWorkItem;
 pub mod in2_helpers;
+pub mod store_refs;
 mod utils;
 use utils::*;
 
@@ -72,7 +73,7 @@ struct Env {
     store_path: Utf8PathBuf,
 
     // cached store references, used to speed up closure calculatioon
-    cache_store_refs: std::sync::Mutex<yzix_store_refs::Cache>,
+    cache_store_refs: std::sync::Mutex<store_refs::Cache>,
 
     // outhash-locking, to prevent racing in the store
     store_locks: std::sync::Mutex<HashSet<StoreHash>>,
@@ -142,7 +143,7 @@ async fn handle_submit_task(
             trace!("determine store closure...");
             // TODO: how should we handle missing store paths?
             block_in_place(|| {
-                yzix_store_refs::determine_store_closure(
+                store_refs::determine_store_closure(
                     &parent.store_path,
                     &mut parent
                         .cache_store_refs
@@ -298,7 +299,7 @@ pub async fn main(
         store_path,
         container_runner,
 
-        cache_store_refs: std::sync::Mutex::new(yzix_store_refs::Cache::new(1000)),
+        cache_store_refs: std::sync::Mutex::new(store_refs::Cache::new(1000)),
         store_locks: Default::default(),
         tasks: Default::default(),
     });

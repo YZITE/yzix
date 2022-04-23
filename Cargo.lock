@@ -1690,10 +1690,12 @@ version = "0.1.0"
 dependencies = [
  "async-compression",
  "camino",
+ "lru",
  "oci-spec",
  "rand",
  "serde",
  "serde_json",
+ "store-ref-scanner",
  "tempfile",
  "thiserror",
  "tokio",
@@ -1701,18 +1703,6 @@ dependencies = [
  "tracing-futures",
  "yzix-pool",
  "yzix-proto-core",
- "yzix-store-refs",
-]
-
-[[package]]
-name = "yzix-store-refs"
-version = "0.1.0"
-dependencies = [
- "camino",
- "lru",
- "store-ref-scanner",
- "tracing",
- "yzix-store",
 ]
 
 [[package]]
