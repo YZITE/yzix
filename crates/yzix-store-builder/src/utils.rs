@@ -1,10 +1,9 @@
+use camino::Utf8Path;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::{marker::Unpin, path::Path, sync::Arc};
 use tokio::sync::broadcast::{self, Receiver, Sender};
 use tracing::trace;
-use yzix_proto::{
-    store::Dump, store::Hash as StoreHash, strwrappers::OutputName, TaskBoundResponse,
-};
+use yzix_proto_core::{BuildError, Dump, OutputName, StoreHash, TaskBoundResponse};
 
 async fn handle_logging_to_intermed<T: tokio::io::AsyncRead + Unpin>(
     log: Sender<String>,
@@ -45,13 +44,12 @@ async fn handle_logging_to_file(mut linp: Receiver<String>, loutp: &Path) -> std
 }
 
 async fn handle_logging_to_global(
-    tid: StoreHash,
     mut linp: Receiver<String>,
-    loutp: Sender<(StoreHash, Arc<TaskBoundResponse>)>,
+    loutp: Sender<Arc<TaskBoundResponse>>,
 ) {
     while let Ok(content) = linp.recv().await {
         if loutp
-            .send((tid, Arc::new(TaskBoundResponse::Log(content))))
+            .send(Arc::new(TaskBoundResponse::Log(content)))
             .is_err()
         {
             break;
@@ -60,7 +58,7 @@ async fn handle_logging_to_global(
 }
 
 async fn build_linux_ocirt_spec(
-    config: &crate::ServerConfig,
+    store_path: &Utf8Path,
     rootdir: &Path,
     args: Vec<String>,
     env: Vec<String>,
@@ -97,11 +95,11 @@ async fn build_linux_ocirt_spec(
         });
     let mut ropaths = osr::get_default_readonly_paths();
     if !refs.is_empty() {
-        let fake_store = rootdir.join(&config.store_path.as_str()[1..]);
+        let fake_store = rootdir.join(&store_path.as_str()[1..]);
         tokio::fs::create_dir_all(&fake_store).await?;
         for i in refs {
             let ias = i.to_string();
-            let spath = config.store_path.join(&ias);
+            let spath = store_path.join(&ias);
             let dpath = fake_store.join(&ias);
 
             if spath.is_dir() {
@@ -206,35 +204,42 @@ pub fn random_name() -> String {
 }
 
 #[inline]
-pub fn placeholder(name: &OutputName) -> StoreHash {
+fn placeholder(name: &OutputName) -> StoreHash {
     StoreHash::hash_complex::<OutputName>(name)
+}
+
+pub struct HandleProcessArgs<'a> {
+    pub(crate) env: &'a crate::Env,
+    pub container_name: &'a str,
+    pub logs: Sender<Arc<TaskBoundResponse>>,
 }
 
 // NOTE: in the returned outputs, the hash is modulo the outputs
 pub async fn handle_process(
-    config: &crate::ServerConfig,
-    logs: Sender<(StoreHash, Arc<TaskBoundResponse>)>,
-    container_name: &str,
+    HandleProcessArgs {
+        env,
+        container_name,
+        logs,
+    }: HandleProcessArgs<'_>,
     crate::FullWorkItem {
         inhash,
         refs,
         inner:
-            yzix_proto::WorkItem {
+            yzix_proto_core::WorkItem {
                 args,
                 mut envs,
                 outputs,
             },
     }: crate::FullWorkItem,
-) -> Result<BTreeMap<OutputName, (StoreHash, Dump)>, yzix_proto::BuildError> {
-    use yzix_proto::BuildError;
-
+) -> Result<BTreeMap<OutputName, (StoreHash, Dump)>, BuildError> {
     if args.is_empty() || args[0].is_empty() {
         return Err(BuildError::EmptyCommand);
     }
 
+    let store_path = &env.store_path;
     let workdir = tempfile::tempdir()?;
     let rootdir = workdir.path().join("rootfs");
-    let logoutput = config.store_path.join(format!("{}.log.zst", inhash));
+    let logoutput = store_path.join(format!("{}.log.zst", inhash));
 
     std::fs::create_dir_all(&rootdir)?;
     std::fs::create_dir_all(rootdir.join("build"))?;
@@ -245,8 +250,7 @@ pub async fn handle_process(
         //("LC_ALL", "C.UTF-8"),
         ("LC_ALL", "C"),
         ("NIX_BUILD_TOP", "/build"),
-        ("NIX_STORE", config.store_path.as_str()),
-
+        ("NIX_STORE", store_path.as_str()),
         // from nixpkgs/pkgs/stdenv/generic/setup.sh:
         /****
           Set a fallback default value for SOURCE_DATE_EPOCH, used by some build tools
@@ -256,10 +260,8 @@ pub async fn handle_process(
           1970.
         ****/
         ("SOURCE_DATE_EPOCH", "315532800"),
-
         // trigger colored output in various tools
         ("TERM", "xterm-256color"),
-
         ("TZ", "UTC"),
     ] {
         envs.entry(key.to_string())
@@ -275,16 +277,13 @@ pub async fn handle_process(
         .collect();
 
     for (k, v) in &outputs {
-        envs.insert(
-            k.to_string(),
-            config.store_path.join(&v.to_string()).into_string(),
-        );
+        envs.insert(k.to_string(), store_path.join(&v.to_string()).into_string());
     }
 
     // generate spec
     {
         let spec = build_linux_ocirt_spec(
-            config,
+            store_path,
             &rootdir,
             args,
             envs.into_iter()
@@ -303,10 +302,10 @@ pub async fn handle_process(
     trace!("environment settings serialized");
 
     use std::process::Stdio;
-    let mut ch = tokio::process::Command::new(&config.container_runner)
+    let mut ch = tokio::process::Command::new(&env.container_runner)
         .args(vec![
             "--root".to_string(),
-            config.store_path.join(".runc").into_string(),
+            store_path.join(".runc").into_string(),
             "run".to_string(),
             container_name.to_string(),
         ])
@@ -317,7 +316,7 @@ pub async fn handle_process(
         .kill_on_drop(true)
         .spawn()?;
     let (logfwds, logfwdr) = broadcast::channel(1000);
-    let z = handle_logging_to_global(inhash, logfwdr, logs);
+    let z = handle_logging_to_global(logfwdr, logs);
     let y = handle_logging_to_file(logfwds.subscribe(), logoutput.as_std_path());
     let x = handle_logging_to_intermed(logfwds.clone(), ch.stderr.take().unwrap());
     let w = handle_logging_to_intermed(logfwds, ch.stdout.take().unwrap());
@@ -327,19 +326,19 @@ pub async fn handle_process(
     let (_, exs) = (y?, exs?);
 
     if exs.success() {
-        let fake_store = rootdir.join(&config.store_path.as_str()[1..]);
+        let fake_store = rootdir.join(&store_path.as_str()[1..]);
         let mut outputs: BTreeMap<_, _> = outputs
             .into_iter()
             .map(|(i, plh)| {
                 tokio::task::block_in_place(|| {
                     let dump = Dump::read_from_path(&fake_store.join(&plh.to_string()))?;
                     let outhash = StoreHash::hash_complex::<Dump>(&dump);
-                    Ok::<_, yzix_proto::store::Error>((i, (plh, dump, outhash)))
+                    Ok::<_, yzix_proto_core::StoreError>((i, (plh, dump, outhash)))
                 })
             })
             .collect::<Result<_, _>>()?;
         {
-            let stspec = yzix_store_refs::build_store_spec(&config.store_path);
+            let stspec = yzix_store_refs::build_store_spec(store_path);
             let rwtr = yzix_store_refs::Rewrite {
                 spec: &stspec,
                 rwtab: outputs

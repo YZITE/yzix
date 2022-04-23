@@ -22,14 +22,5 @@ version = "1.17"
 version = "0.7"
 features = ["codec"]
 
-[dependencies.yzix-store]
-path = "../yzix-store"
-
-[dependencies.yzix-strwrappers]
-path = "../yzix-strwrappers"
-
-[dependencies.yzix-ser-trait]
-path = "../yzix-ser-trait"
-
-[dependencies.yzix-visit-bytes]
-path = "../yzix-visit-bytes"
+[dependencies.yzix-proto-core]
+path = "../yzix-proto-core"

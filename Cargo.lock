@@ -1640,6 +1640,15 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+ "yzix-proto-core",
+]
+
+[[package]]
+name = "yzix-proto-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror",
  "yzix-ser-trait",
  "yzix-store",
  "yzix-strwrappers",
@@ -1657,26 +1666,15 @@ dependencies = [
 name = "yzix-server"
 version = "0.1.0"
 dependencies = [
- "async-compression",
- "camino",
  "futures-util",
  "num_cpus",
- "oci-spec",
- "rand",
  "serde",
- "serde_json",
- "tempfile",
- "thiserror",
  "tokio",
  "toml",
  "tracing",
- "tracing-futures",
  "tracing-subscriber",
- "yzix-pool",
  "yzix-proto",
- "yzix-ser-trait",
- "yzix-store-refs",
- "yzix-visit-bytes",
+ "yzix-store-builder",
 ]
 
 [[package]]
@@ -1694,6 +1692,28 @@ dependencies = [
  "thiserror",
  "xattr",
  "yzix-ser-trait",
+ "yzix-visit-bytes",
+]
+
+[[package]]
+name = "yzix-store-builder"
+version = "0.1.0"
+dependencies = [
+ "async-compression",
+ "camino",
+ "oci-spec",
+ "rand",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-futures",
+ "yzix-pool",
+ "yzix-proto-core",
+ "yzix-ser-trait",
+ "yzix-store-refs",
  "yzix-visit-bytes",
 ]
 

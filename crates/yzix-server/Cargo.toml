@@ -1,26 +1,16 @@
 [package]
 name = "yzix-server"
+description = "Yzix server executable, wraps the store-builder task"
 version = "0.1.0"
 edition = "2021"
-license = "Apache-2.0"
+license = "Apache-2.0 WITH LLVM-exception"
 
 [dependencies]
-camino = "1.0"
 num_cpus = "1.13"
-oci-spec = "0.5"
-rand = "0.8"
 serde = "1.0"
-serde_json = "1.0"
-tempfile = "3.3"
-thiserror = "1.0"
 toml = "0.5"
 tracing = "0.1"
-tracing-futures = "0.2"
 tracing-subscriber = "0.3"
-
-[dependencies.async-compression]
-version = "0.3"
-features = ["tokio", "zstd"]
 
 [dependencies.futures-util]
 version = "0.3"
@@ -29,28 +19,16 @@ features = ["sink"]
 [dependencies.tokio]
 version = "1.17"
 features = [
-  "fs",
   "io-util",
   "macros",
   "net",
-  "process",
   "rt",
   "rt-multi-thread",
-  "signal",
   "sync"
 ]
-
-[dependencies.yzix-pool]
-path = "../yzix-pool"
 
 [dependencies.yzix-proto]
 path = "../yzix-proto"
 
-[dependencies.yzix-ser-trait]
-path = "../yzix-ser-trait"
-
-[dependencies.yzix-store-refs]
-path = "../yzix-store-refs"
-
-[dependencies.yzix-visit-bytes]
-path = "../yzix-visit-bytes"
+[dependencies.yzix-store-builder]
+path = "../yzix-store-builder"

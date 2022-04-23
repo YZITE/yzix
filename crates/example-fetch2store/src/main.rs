@@ -1,4 +1,4 @@
-use yzix_client::{store, Driver};
+use yzix_client::{Driver, Dump, StoreHash};
 
 #[derive(Debug, clap::Parser)]
 struct Args {
@@ -34,7 +34,7 @@ async fn main() {
         .expect("unable to send authentication info to yzix server");
     let driver = Driver::new(stream).await;
 
-    let mut dump = store::Dump::Regular {
+    let mut dump = Dump::Regular {
         executable: args.executable,
         contents: my_fetch(&args.url_to_fetch)
             .await
@@ -43,11 +43,11 @@ async fn main() {
 
     if let Some(path) = &args.with_path {
         for i in path.split('/') {
-            dump = store::Dump::Directory(std::iter::once((i.to_string(), dump)).collect());
+            dump = Dump::Directory(std::iter::once((i.to_string(), dump)).collect());
         }
     }
 
-    let h = store::Hash::hash_complex(&dump);
+    let h = StoreHash::hash_complex(&dump);
     println!("hash = {}", h);
 
     if driver.has_out_hash(h).await {

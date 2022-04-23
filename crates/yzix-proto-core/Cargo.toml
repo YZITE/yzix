@@ -1,0 +1,24 @@
+[package]
+name = "yzix-proto-core"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0 WITH LLVM-exception"
+
+[dependencies]
+thiserror = "1.0"
+
+[dependencies.serde]
+version = "1.0"
+features = ["derive"]
+
+[dependencies.yzix-ser-trait]
+path = "../yzix-ser-trait"
+
+[dependencies.yzix-store]
+path = "../yzix-store"
+
+[dependencies.yzix-strwrappers]
+path = "../yzix-strwrappers"
+
+[dependencies.yzix-visit-bytes]
+path = "../yzix-visit-bytes"

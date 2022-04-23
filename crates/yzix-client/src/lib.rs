@@ -28,15 +28,15 @@ enum WorkMessage {
         answ_chan: oneshot::Sender<TaskBoundResponse>,
     },
     Upload {
-        data: store::Dump,
+        data: Dump,
         answ_chan: oneshot::Sender<Response>,
     },
     HasOutHash {
-        data: store::Hash,
+        data: StoreHash,
         answ_chan: oneshot::Sender<Response>,
     },
     Download {
-        data: store::Hash,
+        data: StoreHash,
         answ_chan: oneshot::Sender<Response>,
     },
 }
@@ -65,7 +65,7 @@ impl Driver {
         tokio::spawn(async move {
             let mut backlog = std::collections::VecDeque::new();
             let mut inflight_info: Option<Inflight> = None;
-            let mut running = std::collections::HashMap::<store::Hash, RSTask>::new();
+            let mut running = std::collections::HashMap::<StoreHash, RSTask>::new();
             use {Request as Req, Response as Resp, TaskBoundResponse as Tbr};
             loop {
                 tokio::select!(
@@ -78,7 +78,7 @@ impl Driver {
                         match msg {
                             WorkMessage::SubmitTask { data, answ_chan } => {
                                 use std::collections::hash_map::Entry;
-                                let tid = store::Hash::hash_complex(&data);
+                                let tid = StoreHash::hash_complex(&data);
                                 tracing::info!("{}: submitted", tid);
                                 if let Err(e) = wbs.send(
                                     Req::SubmitTask { item: data, subscribe2log: true }
@@ -156,7 +156,7 @@ impl Driver {
                                 );
                                 break;
                             }
-                            Resp::Ok | Resp::False | Resp::Text(_) | Resp::Dump(_) => {
+                            Resp::Aborted | Resp::Ok | Resp::False | Resp::Text(_) | Resp::Dump(_) => {
                                 if let Some(x) = inflight_info.take() {
                                     tracing::debug!("{} -> {:?}", x.orig_req, msg);
                                     drop::<Result<_, _>>(x.answ_chan.send(msg));
@@ -206,7 +206,7 @@ impl Driver {
         answ_get.await.unwrap()
     }
 
-    pub async fn upload(&self, data: store::Dump) -> Response {
+    pub async fn upload(&self, data: Dump) -> Response {
         let (answ_chan, answ_get) = oneshot::channel();
         self.wchan_s
             .send(WorkMessage::Upload { data, answ_chan })
@@ -214,7 +214,7 @@ impl Driver {
         answ_get.await.unwrap()
     }
 
-    pub async fn has_out_hash(&self, data: store::Hash) -> bool {
+    pub async fn has_out_hash(&self, data: StoreHash) -> bool {
         let (answ_chan, answ_get) = oneshot::channel();
         self.wchan_s
             .send(WorkMessage::HasOutHash { data, answ_chan })
@@ -222,7 +222,7 @@ impl Driver {
         answ_get.await.unwrap() == Response::Ok
     }
 
-    pub async fn download(&self, data: store::Hash) -> Response {
+    pub async fn download(&self, data: StoreHash) -> Response {
         let (answ_chan, answ_get) = oneshot::channel();
         self.wchan_s
             .send(WorkMessage::Download { data, answ_chan })
@@ -231,10 +231,7 @@ impl Driver {
     }
 }
 
-pub async fn do_auth(
-    stream: &mut TcpStream,
-    bearer_token: &str,
-) -> std::io::Result<()> {
+pub async fn do_auth(stream: &mut TcpStream, bearer_token: &str) -> std::io::Result<()> {
     use tokio::io::AsyncWriteExt;
     let buf = bearer_token.to_string().into_bytes();
     stream

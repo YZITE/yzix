@@ -1,6 +1,4 @@
-# yzix-server
-
-(for the client-server protocol, see [yzix-proto](../yzix-proto/README.md))
+# yzix-store-builder
 
 ## internal architecture
 

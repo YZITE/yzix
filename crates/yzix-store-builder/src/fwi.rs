@@ -1,14 +1,14 @@
 use std::collections::BTreeSet;
-use yzix_proto::store::Hash as StoreHash;
+use yzix_proto_core::{StoreHash, WorkItem};
 
 pub struct FullWorkItem {
     pub inhash: StoreHash,
     pub refs: BTreeSet<StoreHash>,
-    pub inner: yzix_proto::WorkItem,
+    pub inner: WorkItem,
 }
 
 impl FullWorkItem {
-    pub fn new(inner: yzix_proto::WorkItem, store_path: &camino::Utf8Path) -> Self {
+    pub fn new(inner: WorkItem, store_path: &camino::Utf8Path) -> Self {
         use yzix_ser_trait::Serialize as _;
 
         let mut hasher = StoreHash::get_hasher();

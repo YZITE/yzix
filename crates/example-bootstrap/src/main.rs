@@ -1,10 +1,7 @@
 use indoc::indoc;
 use std::collections::{BTreeMap, BTreeSet};
 use tracing::{error, info};
-use yzix_client::{
-    store::Dump, store::Hash as StoreHash, strwrappers::OutputName, Driver,
-    TaskBoundResponse as Tbr, WorkItem,
-};
+use yzix_client::{Driver, Dump, OutputName, StoreHash, TaskBoundResponse as Tbr, WorkItem};
 
 async fn fetchurl(
     driver: &Driver,
