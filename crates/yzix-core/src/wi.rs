@@ -1,10 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct WorkItem {
     pub args: Vec<String>,
     pub envs: BTreeMap<String, String>,
     pub outputs: BTreeSet<crate::OutputName>,
+
+    // used for e.g. structured attrs, where it doesn't make sense to first
+    // serialize a dump to the store to use it only once
+    // the files get placed into the `/build` directory
+    pub files: BTreeMap<crate::BaseName, crate::Dump>,
 }
 
 impl crate::Serialize for WorkItem {
@@ -28,6 +33,16 @@ impl crate::Serialize for WorkItem {
         self.outputs.len().serialize(state);
         for o in &self.outputs {
             o.serialize(state);
+        }
+        if !self.files.is_empty() {
+            "files".serialize(state);
+            self.files.len().serialize(state);
+            for (fname, fdump) in &self.files {
+                "(".serialize(state);
+                fname.serialize(state);
+                fdump.serialize(state);
+                ")".serialize(state);
+            }
         }
         ")".serialize(state);
     }

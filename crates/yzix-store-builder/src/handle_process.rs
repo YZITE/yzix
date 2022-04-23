@@ -1,9 +1,9 @@
 use camino::Utf8Path;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
-use std::{marker::Unpin, path::Path, sync::Arc};
+use std::{marker::Unpin, mem::drop, path::Path, sync::Arc};
 use tokio::sync::broadcast::{self, Receiver, Sender};
 use tracing::trace;
-use yzix_core::{BuildError, Dump, OutputName, StoreHash, TaskBoundResponse};
+use yzix_core::{BuildError, Dump, DumpFlags, OutputName, StoreHash, TaskBoundResponse};
 
 async fn handle_logging_to_intermed<T: tokio::io::AsyncRead + Unpin>(
     log: Sender<String>,
@@ -220,6 +220,7 @@ pub async fn handle_process(
                 args,
                 mut envs,
                 outputs,
+                files,
             },
     }: crate::FullWorkItem,
 ) -> Result<BTreeMap<OutputName, (StoreHash, Dump)>, BuildError> {
@@ -233,7 +234,8 @@ pub async fn handle_process(
     let logoutput = store_path.join(format!("{}.log.zst", inhash));
 
     std::fs::create_dir_all(&rootdir)?;
-    std::fs::create_dir_all(rootdir.join("build"))?;
+    let builddir = rootdir.join("build");
+    std::fs::create_dir_all(&builddir)?;
     std::fs::create_dir_all(rootdir.join("tmp"))?;
 
     for (key, value) in [
@@ -270,6 +272,20 @@ pub async fn handle_process(
     for (k, v) in &outputs {
         envs.insert(k.to_string(), store_path.join(&v.to_string()).into_string());
     }
+
+    for (fnam, fdump) in files {
+        tokio::task::block_in_place(|| {
+            fdump.write_to_path(
+                &builddir.join(&*fnam),
+                DumpFlags {
+                    force: true,
+                    make_readonly: false,
+                },
+            )
+        })?;
+    }
+
+    drop(builddir);
 
     // generate spec
     {

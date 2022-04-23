@@ -43,7 +43,9 @@ async fn main() {
 
     if let Some(path) = &args.with_path {
         for i in path.split('/') {
-            dump = Dump::Directory(std::iter::once((i.to_string(), dump)).collect());
+            dump = Dump::Directory(
+                std::iter::once((i.to_string().try_into().unwrap(), dump)).collect(),
+            );
         }
     }
 

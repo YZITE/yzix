@@ -13,7 +13,7 @@ use std::{fs, path::Path};
 pub enum Dump {
     Regular { executable: bool, contents: Vec<u8> },
     SymLink { target: Utf8PathBuf },
-    Directory(std::collections::BTreeMap<String, Dump>),
+    Directory(std::collections::BTreeMap<crate::BaseName, Dump>),
 }
 
 // sort-of NAR serialization impl
@@ -130,6 +130,10 @@ impl Dump {
                         let name = entry.file_name().into_string().map_err(|_| Error {
                             real_path: entry.path(),
                             kind: ErrorKind::NonUtf8Basename,
+                        })?;
+                        let name: crate::BaseName = name.try_into().map_err(|_| Error {
+                            real_path: entry.path(),
+                            kind: ErrorKind::InvalidBasename,
                         })?;
                         let val = Dump::read_from_path(&entry.path())?;
                         Ok((name, val))
@@ -301,7 +305,7 @@ impl Dump {
                     if name.is_empty() {
                         return Err(Error {
                             real_path: x.to_path_buf(),
-                            kind: ErrorKind::EmptyBasename,
+                            kind: ErrorKind::InvalidBasename,
                         });
                     }
                     xs.push(name);

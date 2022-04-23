@@ -103,8 +103,8 @@ pub enum StoreErrorKind {
     #[error("got unknown file type {0}")]
     UnknownFileType(String),
 
-    #[error("directory entries with empty names are invalid")]
-    EmptyBasename,
+    #[error("got directory entry with invalid base names")]
+    InvalidBasename,
 
     #[error("symlinks are unsupported on this system")]
     #[cfg(not(any(unix, windows)))]

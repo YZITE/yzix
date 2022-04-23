@@ -1,5 +1,5 @@
 use core::{convert, fmt};
-use std::borrow::Borrow;
+use std::{borrow::Borrow, path::Path};
 
 macro_rules! make_strwrapper {
     ($name:ident ( $inp:ident ) || $errmsg:expr; { $($x:tt)* }) => {
@@ -11,6 +11,7 @@ macro_rules! make_strwrapper {
         pub struct $name(String);
 
         impl $name {
+            #[inline]
             pub fn new($inp: String) -> Option<Self> {
                 $($x)*
             }
@@ -32,6 +33,7 @@ macro_rules! make_strwrapper {
 
         impl TryFrom<String> for $name {
             type Error = &'static str;
+            #[inline]
             fn try_from(x: String) -> Result<Self, &'static str> {
                 Self::new(x).ok_or($errmsg)
             }
@@ -74,6 +76,7 @@ macro_rules! make_strwrapper {
         }
 
         impl crate::Serialize for $name {
+            #[inline(always)]
             fn serialize<U: crate::SerUpdate>(&self, state: &mut U) {
                 self.0.serialize(state);
             }
@@ -101,6 +104,24 @@ impl Default for OutputName {
 
 pub fn is_default_output(o: &OutputName) -> bool {
     &*o.0 == "out"
+}
+
+make_strwrapper! { BaseName(efnam) || "invalid base name"; {
+    let is_illegal = |i: char| {
+        matches!(i, '\0' | '/') || std::path::is_separator(i)
+    };
+    match efnam.as_str() {
+        "" | "." | ".." => None,
+        _ if efnam.contains(is_illegal) => None,
+        _ => Some(Self(efnam))
+    }
+}}
+
+impl convert::AsRef<Path> for BaseName {
+    #[inline(always)]
+    fn as_ref(&self) -> &Path {
+        Path::new(&*self.0)
+    }
 }
 
 #[cfg(test)]

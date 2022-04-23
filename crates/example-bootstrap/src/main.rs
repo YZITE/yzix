@@ -3,22 +3,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use tracing::{error, info};
 use yzix_client::{Driver, Dump, OutputName, StoreHash, TaskBoundResponse as Tbr, WorkItem};
 
-async fn fetchurl(
-    driver: &Driver,
+async fn my_fetch(url: &str) -> Result<Vec<u8>, reqwest::Error> {
+    Ok(reqwest::get(url).await?.bytes().await?.as_ref().to_vec())
+}
+
+async fn fetchurl_outside_store(
     url: &str,
     expect_hash: &str,
     with_path: &str,
     executable: bool,
-) -> anyhow::Result<StoreHash> {
-    async fn my_fetch(url: &str) -> Result<Vec<u8>, reqwest::Error> {
-        Ok(reqwest::get(url).await?.bytes().await?.as_ref().to_vec())
-    }
-
+) -> anyhow::Result<Dump> {
     let h = expect_hash.parse::<StoreHash>().unwrap();
-
-    if driver.has_out_hash(h).await {
-        return Ok(h);
-    }
 
     info!("fetching {} ...", url);
     let contents = my_fetch(url).await?;
@@ -31,7 +26,9 @@ async fn fetchurl(
 
     if !with_path.is_empty() {
         for i in with_path.split('/') {
-            dump = Dump::Directory(std::iter::once((i.to_string(), dump)).collect());
+            dump = Dump::Directory(
+                std::iter::once((i.to_string().try_into().unwrap(), dump)).collect(),
+            );
         }
     }
 
@@ -44,11 +41,30 @@ async fn fetchurl(
         anyhow::bail!("hash mismatch for url ({})", url);
     }
 
+    Ok(dump)
+}
+
+async fn fetchurl(
+    driver: &Driver,
+    url: &str,
+    expect_hash: &str,
+    with_path: &str,
+    executable: bool,
+) -> anyhow::Result<StoreHash> {
+    let h = expect_hash.parse::<StoreHash>().unwrap();
+
+    if driver.has_out_hash(h).await {
+        return Ok(h);
+    }
+
+    let dump = fetchurl_outside_store(url, expect_hash, with_path, executable).await?;
+
     let x = driver.upload(dump).await;
     info!("fetchurl ({}): {:?}", url, x);
     if !x.is_ok() {
         anyhow::bail!("fetchurl ({}) failed: {:?}", url, x);
     }
+
     Ok(h)
 }
 
@@ -60,6 +76,13 @@ fn mk_outputs(elems: Vec<&str>) -> BTreeSet<OutputName> {
     elems
         .into_iter()
         .map(|i| OutputName::new(i.to_string()).unwrap())
+        .collect()
+}
+
+fn mk_envfiles(elems: Vec<(&str, Dump)>) -> BTreeMap<yzix_client::BaseName, Dump> {
+    elems
+        .into_iter()
+        .map(|(k, v)| (k.to_string().try_into().unwrap(), v))
         .collect()
 }
 
@@ -94,17 +117,17 @@ async fn gen_wrappers(
         }
     }
 
-    let mut dir: BTreeMap<_, _> = ["gcc", "g++"]
+    let mut dir: BTreeMap<yzix_client::BaseName, _> = ["gcc", "g++"]
         .into_iter()
-        .map(|i| (i.to_string(), gen_wrapper(store_path, bootstrap_tools, i)))
+        .map(|i| (i.to_string().try_into().unwrap(), gen_wrapper(store_path, bootstrap_tools, i)))
         .collect();
 
-    dir.insert("cc".to_string(), dir["gcc"].clone());
-    dir.insert("cpp".to_string(), dir["g++"].clone());
-    dir.insert("cxx".to_string(), dir["g++"].clone());
+    for (from, to) in [("gcc", "cc"), ("g++", "cpp"), ("cxx", "g++")] {
+        dir.insert(to.to_string().try_into().unwrap(), dir[from].clone());
+    }
 
     let mut dump = Dump::Directory(dir);
-    dump = Dump::Directory(std::iter::once(("bin".to_string(), dump)).collect());
+    dump = Dump::Directory(std::iter::once(("bin".to_string().try_into().unwrap(), dump)).collect());
     smart_upload(driver, dump, "genWrappers").await
 }
 
@@ -131,11 +154,10 @@ async fn main() -> anyhow::Result<()> {
 
     let store_path = driver.store_path().await;
 
-    let h_busybox = fetchurl(
-        &driver,
+    let dump_busybox = fetchurl_outside_store(
         "http://tarballs.nixos.org/stdenv-linux/i686/4907fc9e8d0d82b28b3c56e3a478a2882f1d700f/busybox",
-        "liAXAxlPQSRlEjqQFgoewxVmQTv73rfukUCyyPZfsKI",
-        "busybox",
+        "AtMeYP1lxrUD2kR+QmhW+E1l06QXFqsw3wOj87bC4X4",
+        "",
         true,
     );
 
@@ -147,8 +169,7 @@ async fn main() -> anyhow::Result<()> {
         false,
     );
 
-    let h_unpack_bootstrap_tools = fetchurl(
-        &driver,
+    let dump_unpack_bootstrap_tools = fetchurl_outside_store(
         "https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/stdenv/linux/bootstrap-tools/scripts/unpack-bootstrap-tools.sh",
         "ow8ctEPXY74kphwpR0SAb2fIbZ7FmFr8EnxmPH80_sY",
         "",
@@ -157,25 +178,31 @@ async fn main() -> anyhow::Result<()> {
 
     /* === bootstrap stage 0 === */
 
-    let (h_busybox, h_bootstrap_tools, h_unpack_bootstrap_tools) =
-        tokio::join!(h_busybox, h_bootstrap_tools, h_unpack_bootstrap_tools);
-    let (h_busybox, h_bootstrap_tools, h_unpack_bootstrap_tools) =
-        (h_busybox?, h_bootstrap_tools?, h_unpack_bootstrap_tools?);
-    let bb = format!("{}/{}/busybox", store_path, h_busybox);
+    let (dump_busybox, h_bootstrap_tools, dump_unpack_bootstrap_tools) =
+        tokio::join!(dump_busybox, h_bootstrap_tools, dump_unpack_bootstrap_tools);
+    let (dump_busybox, h_bootstrap_tools, dump_unpack_bootstrap_tools) = (
+        dump_busybox?,
+        h_bootstrap_tools?,
+        dump_unpack_bootstrap_tools?,
+    );
 
     let bootstrap_tools = driver
         .run_task(WorkItem {
             envs: mk_envs(vec![
-                ("builder", bb.clone()),
+                ("builder", "/build/busybox".to_string()),
                 ("tarball", format!("{}/{}", store_path, h_bootstrap_tools)),
             ]),
             args: vec![
-                bb.clone(),
+                "/build/busybox".to_string(),
                 "ash".to_string(),
                 "-e".to_string(),
-                format!("{}/{}", store_path, h_unpack_bootstrap_tools),
+                "/build/unpack-bootstrap-tools.sh".to_string(),
             ],
             outputs: mk_outputs(vec!["out"]),
+            files: mk_envfiles(vec![
+                ("busybox", dump_busybox),
+                ("unpack-bootstrap-tools.sh", dump_unpack_bootstrap_tools),
+            ]),
         })
         .await;
 
@@ -221,21 +248,6 @@ async fn main() -> anyhow::Result<()> {
         cp -r usr/include $out
         find $out -type f ! -name '*.h' -delete
     "};
-    let kernel_headers_buildsh = smart_upload(
-        &driver,
-        Dump::Regular {
-            executable: true,
-            contents: format!(
-                "#!{stp}/{bst}/bin/bash\n{mscr}",
-                stp = store_path,
-                bst = bootstrap_tools,
-                mscr = kernel_headers_script,
-            )
-            .into_bytes(),
-        },
-        "kernel_headers_buildsh",
-    )
-    .await?;
 
     let kernel_headers = driver
         .run_task(WorkItem {
@@ -243,11 +255,15 @@ async fn main() -> anyhow::Result<()> {
                 "src",
                 format!("{}/{}", store_path, kernel_headers_src),
             )]),
-            args: vec![
-                format!("{}/{}", store_path, buildsh),
-                format!("{}/{}", store_path, kernel_headers_buildsh),
-            ],
+            args: vec![format!("{}/{}", store_path, buildsh), "/build/build.sh".to_string()],
             outputs: mk_outputs(vec!["out"]),
+            files: mk_envfiles(vec![(
+                "build.sh",
+                Dump::Regular {
+                    executable: true,
+                    contents: kernel_headers_script.to_string().into_bytes(),
+                },
+            )]),
         })
         .await;
 
