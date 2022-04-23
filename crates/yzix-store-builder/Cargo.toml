@@ -8,7 +8,6 @@ license = "Apache-2.0 WITH LLVM-exception"
 [dependencies]
 async-channel = "1.6"
 camino = "1.0"
-lru = "0.7"
 oci-spec = "0.5"
 rand = "0.8"
 serde = "1.0"
@@ -22,6 +21,10 @@ tracing-futures = "0.2"
 [dependencies.async-compression]
 version = "0.3"
 features = ["tokio", "zstd"]
+
+[dependencies.lru]
+version = "0.7"
+default-features = false
 
 [dependencies.tokio]
 version = "1.17"

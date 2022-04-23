@@ -1,10 +1,10 @@
-use futures_util::{FutureExt as _, SinkExt as _, StreamExt as _};
+use futures_util::{SinkExt as _, StreamExt as _};
 use std::sync::Arc;
 use tokio::io::AsyncReadExt as _;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use yzix_proto::{
-    BuildError, Dump, ProtoLen, StoreError, StoreHash, TaskBoundResponse, WbsServerSide,
+    BuildError, ProtoLen, StoreHash, TaskBoundResponse, WbsServerSide,
     WrappedByteStream,
 };
 use yzix_store_builder::ControlMessage as CtrlMsg;
@@ -75,15 +75,14 @@ pub async fn handle_client(
                 } => {
                     let (answ_chan, answ_recv) = oneshot::channel();
                     let resp_s = resp_s.clone();
-                    let _ =
-                        tokio::spawn(answ_recv.then(move |x: Result<StoreHash, _>| async move {
-                            resp_s
-                                .send(match x {
-                                    Ok(x) => Response::TaskBound(x, TaskBoundResponse::Queued),
-                                    Err(_) => Response::Aborted,
-                                })
-                                .await
-                        }));
+                    let _ = tokio::spawn(async move {
+                        resp_s
+                            .send(match answ_recv.await {
+                                Ok(x) => Response::TaskBound(x, TaskBoundResponse::Queued),
+                                Err(_) => Response::Aborted,
+                            })
+                            .await
+                    });
                     Some(CtrlMsg::SubmitTask {
                         item,
                         answ_chan,
@@ -95,66 +94,62 @@ pub async fn handle_client(
                     })
                 }
                 Req::Kill(task_id) => {
-                    let (answ_chan, answ_recv) = oneshot::channel();
+                    let (answ_chan, answ_recv) = oneshot::channel::<bool>();
                     let resp_s = resp_s.clone();
-                    let _ = tokio::spawn(answ_recv.then(move |x: Result<bool, _>| async move {
+                    let _ = tokio::spawn(async move {
                         resp_s
-                            .send(match x {
+                            .send(match answ_recv.await {
                                 Ok(x) => x.into(),
                                 Err(_) => Response::Aborted,
                             })
                             .await
-                    }));
+                    });
                     Some(CtrlMsg::Kill { task_id, answ_chan })
                 }
                 Req::Upload(dump) => {
                     let (answ_chan, answ_recv) = oneshot::channel();
                     let outhash = StoreHash::hash_complex(&dump);
                     let resp_s = resp_s.clone();
-                    let _ = tokio::spawn(answ_recv.then(
-                        move |x: Result<Result<(), StoreError>, _>| async move {
-                            resp_s
-                                .send(match x {
-                                    Ok(Ok(())) => Response::Ok,
-                                    Ok(Err(e)) => {
-                                        Response::TaskBound(outhash, BuildError::from(e).into())
-                                    }
-                                    Err(_) => Response::Aborted,
-                                })
-                                .await
-                        },
-                    ));
+                    let _ = tokio::spawn(async move {
+                        resp_s
+                            .send(match answ_recv.await {
+                                Ok(Ok(())) => Response::Ok,
+                                Ok(Err(e)) => {
+                                    Response::TaskBound(outhash, BuildError::from(e).into())
+                                }
+                                Err(_) => Response::Aborted,
+                            })
+                            .await
+                    });
                     Some(CtrlMsg::Upload { dump, answ_chan })
                 }
                 Req::HasOutHash(outhash) => {
-                    let (answ_chan, answ_recv) = oneshot::channel();
+                    let (answ_chan, answ_recv) = oneshot::channel::<bool>();
                     let resp_s = resp_s.clone();
-                    let _ = tokio::spawn(answ_recv.then(move |x: Result<bool, _>| async move {
+                    let _ = tokio::spawn(async move {
                         resp_s
-                            .send(match x {
+                            .send(match answ_recv.await {
                                 Ok(x) => x.into(),
                                 Err(_) => Response::Aborted,
                             })
                             .await
-                    }));
+                    });
                     Some(CtrlMsg::HasOutHash { outhash, answ_chan })
                 }
                 Req::Download(outhash) => {
                     let (answ_chan, answ_recv) = oneshot::channel();
                     let resp_s = resp_s.clone();
-                    let _ = tokio::spawn(answ_recv.then(
-                        move |x: Result<Result<Dump, StoreError>, _>| async move {
-                            resp_s
-                                .send(match x {
-                                    Ok(Ok(dump)) => Response::Dump(dump),
-                                    Ok(Err(e)) => {
-                                        Response::TaskBound(outhash, BuildError::from(e).into())
-                                    }
-                                    Err(_) => Response::Aborted,
-                                })
-                                .await
-                        },
-                    ));
+                    let _ = tokio::spawn(async move {
+                        resp_s
+                            .send(match answ_recv.await {
+                                Ok(Ok(dump)) => Response::Dump(dump),
+                                Ok(Err(e)) => {
+                                    Response::TaskBound(outhash, BuildError::from(e).into())
+                                }
+                                Err(_) => Response::Aborted,
+                            })
+                            .await
+                    });
                     Some(CtrlMsg::Download { outhash, answ_chan })
                 }
             };
