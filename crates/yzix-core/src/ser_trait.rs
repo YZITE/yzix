@@ -60,3 +60,72 @@ mod padding {
         &PADDING[..padding_len(len).into()]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Serialize as _;
+
+    #[derive(Debug, Default)]
+    struct VecWrap(Vec<u8>);
+
+    impl digest::Update for VecWrap {
+        fn update(&mut self, data: &[u8]) {
+            self.0.extend_from_slice(data);
+        }
+    }
+
+    #[test]
+    fn x0() {
+        let mut vw = VecWrap::default();
+        "".serialize(&mut vw);
+        assert_eq!([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,], vw.0[..]);
+    }
+
+    #[test]
+    fn x1() {
+        let mut vw = VecWrap::default();
+        "h".serialize(&mut vw);
+        assert_eq!(
+            [
+                0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, b'h', 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00,
+            ],
+            vw.0[..]
+        );
+    }
+
+    #[test]
+    fn x5() {
+        let mut vw = VecWrap::default();
+        "hewlo".serialize(&mut vw);
+        assert_eq!(
+            [
+                0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, b'h', b'e', b'w', b'l', b'o', 0x00,
+                0x00, 0x00,
+            ],
+            vw.0[..]
+        );
+    }
+
+    #[test]
+    fn x8() {
+        let mut vw = VecWrap::default();
+        "abcdefgh".serialize(&mut vw);
+        assert_eq!(
+            [
+                0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, b'a', b'b', b'c', b'd', b'e', b'f',
+                b'g', b'h',
+            ],
+            vw.0[..]
+        );
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn always_padded(v: Vec<u8>) {
+            let mut vw = VecWrap::default();
+            (&*v).serialize(&mut vw);
+            assert_eq!(vw.0.len() % 8, 0);
+        }
+    }
+}

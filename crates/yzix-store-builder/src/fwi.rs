@@ -34,7 +34,7 @@ mod tests {
 
     #[test]
     fn fwi_simple() {
-        let a = yzix_proto::WorkItem {
+        let a = yzix_core::WorkItem {
             args: vec![
                 "/yzix_s/4Zx1PBoft1YyAuKdhjAY1seZFHloxQ+8voHQRkRMuys/bin/whoops".to_string(),
             ],
