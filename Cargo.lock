@@ -165,9 +165,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "clap"
-version = "3.1.9"
+version = "3.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6aad2534fad53df1cc12519c5cda696dd3e20e6118a027e24054aea14a0bdcbe"
+checksum = "7c167e37342afc5f33fd87bbc870cedd020d2a6dffa05d45ccd9241fbdd146db"
 dependencies = [
  "atty",
  "bitflags",
@@ -351,9 +351,9 @@ dependencies = [
 
 [[package]]
 name = "filetime"
-version = "0.2.15"
+version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "975ccf83d8d9d0d84682850a38c8169027be83368805971cc4f238c2b245bc98"
+checksum = "c0408e2626025178a6a7f7ffc05a25bc47103229f19c113755de7bf63816290c"
 dependencies = [
  "cfg-if",
  "libc",
@@ -660,9 +660,9 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
-version = "0.2.123"
+version = "0.2.124"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb691a747a7ab48abc15c5b42066eaafde10dc427e3b6ee2a1cf43db04c763bd"
+checksum = "21a41fed9d98f27ab1c6d161da622a4fa35e8a54a8adc24bbf3ddd0ef70b0e50"
 
 [[package]]
 name = "log"
@@ -1353,9 +1353,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-log"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6923477a48e41c1951f1999ef8bb5a3023eb723ceadafe78ffb65dc366761e3"
+checksum = "78ddad33d2d10b1ed7eb9d1f518a5674713876e97e5bb9b7345a7984fbb4f922"
 dependencies = [
  "lazy_static",
  "log",
@@ -1649,16 +1649,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "thiserror",
- "yzix-ser-trait",
  "yzix-store",
- "yzix-visit-bytes",
-]
-
-[[package]]
-name = "yzix-ser-trait"
-version = "0.1.0"
-dependencies = [
- "digest",
 ]
 
 [[package]]
@@ -1683,6 +1674,7 @@ dependencies = [
  "base64 0.20.0-alpha.1",
  "blake2",
  "camino",
+ "digest",
  "filetime",
  "once_cell",
  "proptest",
@@ -1690,8 +1682,6 @@ dependencies = [
  "serde_test",
  "thiserror",
  "xattr",
- "yzix-ser-trait",
- "yzix-visit-bytes",
 ]
 
 [[package]]
@@ -1711,9 +1701,7 @@ dependencies = [
  "tracing-futures",
  "yzix-pool",
  "yzix-proto-core",
- "yzix-ser-trait",
  "yzix-store-refs",
- "yzix-visit-bytes",
 ]
 
 [[package]]
@@ -1725,12 +1713,7 @@ dependencies = [
  "store-ref-scanner",
  "tracing",
  "yzix-store",
- "yzix-visit-bytes",
 ]
-
-[[package]]
-name = "yzix-visit-bytes"
-version = "0.1.0"
 
 [[package]]
 name = "zstd"

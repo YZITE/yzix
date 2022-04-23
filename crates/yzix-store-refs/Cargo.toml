@@ -12,6 +12,3 @@ tracing = "0.1"
 
 [dependencies.yzix-store]
 path = "../yzix-store"
-
-[dependencies.yzix-visit-bytes]
-path = "../yzix-visit-bytes"

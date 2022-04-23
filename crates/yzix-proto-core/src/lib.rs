@@ -14,8 +14,8 @@ pub use wi::WorkItem;
 
 use std::collections::BTreeMap;
 pub use yzix_store::{
-    Dump, Error as StoreError, ErrorKind as StoreErrorKind, Flags as DumpFlags, Hash as StoreHash,
-    Serialize, Update as SerUpdate,
+    visit_bytes, Dump, Error as StoreError, ErrorKind as StoreErrorKind, Flags as DumpFlags,
+    Hash as StoreHash, Serialize, Update as SerUpdate,
 };
 
 #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]

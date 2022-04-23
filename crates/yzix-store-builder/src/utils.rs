@@ -347,7 +347,7 @@ pub async fn handle_process(
                     .collect(),
             };
             for (_, v, _) in &mut outputs.values_mut() {
-                yzix_visit_bytes::Element::accept_mut(v, &mut &rwtr);
+                yzix_proto_core::visit_bytes::Element::accept_mut(v, &mut &rwtr);
             }
         }
         Ok(outputs

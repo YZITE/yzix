@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
 use yzix_store as ys;
-use yzix_visit_bytes as yvb;
 
 #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct WorkItem {
@@ -35,12 +34,12 @@ impl ys::Serialize for WorkItem {
     }
 }
 
-impl yvb::Element for WorkItem {
-    fn accept<V: yvb::Visitor>(&self, visitor: &mut V) {
+impl ys::visit_bytes::Element for WorkItem {
+    fn accept<V: ys::visit_bytes::Visitor>(&self, visitor: &mut V) {
         self.args.iter().for_each(|x| x.accept(visitor));
         self.envs.values().for_each(|x| x.accept(visitor));
     }
-    fn accept_mut<V: yvb::VisitorMut>(&mut self, visitor: &mut V) {
+    fn accept_mut<V: ys::visit_bytes::VisitorMut>(&mut self, visitor: &mut V) {
         self.args.iter_mut().for_each(|x| x.accept_mut(visitor));
         self.envs.values_mut().for_each(|x| x.accept_mut(visitor));
     }

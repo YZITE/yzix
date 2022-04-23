@@ -16,6 +16,8 @@ pub use hash::Hash;
 mod ser_trait;
 pub use ser_trait::{Serialize, Update};
 
+pub mod visit_bytes;
+
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, thiserror::Error)]
 #[error("{real_path}: {kind}")]
 pub struct Error {

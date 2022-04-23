@@ -3,9 +3,9 @@
 #![cfg(unix)]
 
 use super::{Error, ErrorKind};
+use crate::visit_bytes as yvb;
 use camino::Utf8PathBuf;
 use std::{fs, path::Path};
-use yzix_visit_bytes as yvb;
 
 /// sort-of emulation of NAR
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
