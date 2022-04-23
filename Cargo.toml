@@ -2,6 +2,6 @@
 members = ["crates/*"]
 
 [profile.release]
-codegen-units = 8
+codegen-units = 1
 debug = 1
 lto = "thin"
