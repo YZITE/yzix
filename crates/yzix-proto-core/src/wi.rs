@@ -6,7 +6,7 @@ use yzix_visit_bytes as yvb;
 pub struct WorkItem {
     pub args: Vec<String>,
     pub envs: BTreeMap<String, String>,
-    pub outputs: BTreeSet<yzix_strwrappers::OutputName>,
+    pub outputs: BTreeSet<crate::OutputName>,
 }
 
 impl yst::Serialize for WorkItem {

@@ -1,11 +1,21 @@
+#![forbid(
+    clippy::as_conversions,
+    clippy::cast_ptr_alignment,
+    clippy::let_underscore_drop,
+    trivial_casts,
+    unconditional_recursion,
+    unsafe_code
+)]
+
+mod strwrappers;
 mod wi;
+pub use strwrappers::*;
+pub use wi::WorkItem;
 
 use std::collections::BTreeMap;
-pub use wi::WorkItem;
 pub use yzix_store::{
     Dump, Error as StoreError, ErrorKind as StoreErrorKind, Flags as DumpFlags, Hash as StoreHash,
 };
-pub use yzix_strwrappers::*;
 
 #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum TaskBoundResponse {

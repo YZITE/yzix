@@ -1,17 +1,5 @@
-#![no_std]
-#![forbid(
-    clippy::as_conversions,
-    clippy::cast_ptr_alignment,
-    clippy::let_underscore_drop,
-    trivial_casts,
-    unconditional_recursion,
-    unsafe_code
-)]
-
 use core::{convert, fmt};
-
-extern crate alloc;
-use alloc::string::String;
+use std::borrow::Borrow;
 
 macro_rules! make_strwrapper {
     ($name:ident ( $inp:ident ) || $errmsg:expr; { $($x:tt)* }) => {
@@ -28,14 +16,14 @@ macro_rules! make_strwrapper {
             }
         }
 
-        impl alloc::borrow::Borrow<String> for $name {
+        impl Borrow<String> for $name {
             #[inline(always)]
             fn borrow(&self) -> &String {
                 &self.0
             }
         }
 
-        impl alloc::borrow::Borrow<str> for $name {
+        impl Borrow<str> for $name {
             #[inline(always)]
             fn borrow(&self) -> &str {
                 &*self.0
