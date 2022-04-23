@@ -19,12 +19,12 @@ use yzix_core::{Dump, DumpFlags, StoreError, StoreHash, TaskBoundResponse};
 
 mod fwi;
 use fwi::FullWorkItem;
+mod handle_process;
+use handle_process::{handle_process, HandleProcessArgs};
 pub mod in2_helpers;
 mod pool;
 use pool::Pool;
 pub mod store_refs;
-mod utils;
-use utils::*;
 
 pub const INPUT_REALISATION_DIR_POSTFIX: &str = ".in";
 
@@ -95,6 +95,15 @@ struct HandleSubmitTaskEnv {
     inpath: Utf8PathBuf,
     item: FullWorkItem,
     subscribe: Option<mpsc::Sender<(TaskId, Arc<TaskBoundResponse>)>>,
+}
+
+fn random_name() -> String {
+    use rand::prelude::*;
+    let mut rng = rand::thread_rng();
+    std::iter::repeat(())
+        .take(20)
+        .map(|()| char::from_u32(rng.gen_range(b'a'..=b'z').into()).unwrap())
+        .collect::<String>()
 }
 
 async fn handle_subscribe(

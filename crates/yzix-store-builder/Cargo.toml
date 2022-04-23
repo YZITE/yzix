@@ -31,6 +31,7 @@ version = "1.17"
 features = [
   "fs",
   "io-util",
+  "macros",
   "net",
   "process",
   "rt",

@@ -4,8 +4,7 @@ use tokio::io::AsyncReadExt as _;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use yzix_proto::{
-    BuildError, ProtoLen, StoreHash, TaskBoundResponse, WbsServerSide,
-    WrappedByteStream,
+    BuildError, ProtoLen, StoreHash, TaskBoundResponse, WbsServerSide, WrappedByteStream,
 };
 use yzix_store_builder::ControlMessage as CtrlMsg;
 
