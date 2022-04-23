@@ -15,12 +15,13 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::{block_in_place, spawn_blocking};
 use tracing::{debug, error, span, trace, warn, Level};
 use tracing_futures::Instrument as _;
-use yzix_pool::Pool;
 use yzix_core::{Dump, DumpFlags, StoreError, StoreHash, TaskBoundResponse};
 
 mod fwi;
 use fwi::FullWorkItem;
 pub mod in2_helpers;
+mod pool;
+use pool::Pool;
 pub mod store_refs;
 mod utils;
 use utils::*;

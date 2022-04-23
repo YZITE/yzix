@@ -6,6 +6,7 @@ edition = "2021"
 license = "Apache-2.0 WITH LLVM-exception"
 
 [dependencies]
+async-channel = "1.6"
 camino = "1.0"
 lru = "0.7"
 oci-spec = "0.5"
@@ -36,6 +37,3 @@ features = [
 
 [dependencies.yzix-core]
 path = "../yzix-core"
-
-[dependencies.yzix-pool]
-path = "../yzix-pool"

@@ -1639,13 +1639,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "yzix-pool"
-version = "0.1.0"
-dependencies = [
- "async-channel",
-]
-
-[[package]]
 name = "yzix-proto"
 version = "0.1.0"
 dependencies = [
@@ -1679,6 +1672,7 @@ dependencies = [
 name = "yzix-store-builder"
 version = "0.1.0"
 dependencies = [
+ "async-channel",
  "async-compression",
  "camino",
  "lru",
@@ -1693,7 +1687,6 @@ dependencies = [
  "tracing",
  "tracing-futures",
  "yzix-core",
- "yzix-pool",
 ]
 
 [[package]]
