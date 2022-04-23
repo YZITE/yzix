@@ -169,9 +169,9 @@ pub async fn handle_client(
             let msg = tokio::select! {
                 biased;
 
-                v = log_r.recv() => {
-                    let (tid, tbr): (StoreHash, Arc<TaskBoundResponse>) = v.unwrap();
-                    Response::TaskBound(tid, (*tbr).clone())
+                v = log_r.recv() => match v {
+                    None => break,
+                    Some((tid, tbr)) => Response::TaskBound(tid, (*tbr).clone()),
                 },
 
                 v = resp_r.recv() => match v {
