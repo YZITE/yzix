@@ -1,5 +1,4 @@
 #![forbid(
-    clippy::as_conversions,
     clippy::cast_ptr_alignment,
     clippy::let_underscore_drop,
     trivial_casts,
@@ -8,15 +7,23 @@
 )]
 
 mod strwrappers;
-mod wi;
 pub use strwrappers::*;
+
+mod wi;
 pub use wi::WorkItem;
 
+mod dump;
+pub use dump::{Dump, Flags as DumpFlags};
+
+mod hash;
+pub use hash::Hash as StoreHash;
+
+mod ser_trait;
+pub use ser_trait::{Serialize, Update as SerUpdate};
+
+pub mod visit_bytes;
+
 use std::collections::BTreeMap;
-pub use yzix_store::{
-    visit_bytes, Dump, Error as StoreError, ErrorKind as StoreErrorKind, Flags as DumpFlags,
-    Hash as StoreHash, Serialize, Update as SerUpdate,
-};
 
 #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum TaskBoundResponse {
@@ -73,6 +80,51 @@ impl From<std::io::Error> for BuildError {
             BuildError::Io(y)
         } else {
             BuildError::Unknown(x.to_string())
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, thiserror::Error)]
+#[error("{real_path}: {kind}")]
+pub struct StoreError {
+    pub real_path: std::path::PathBuf,
+    #[source]
+    pub kind: StoreErrorKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, thiserror::Error)]
+pub enum StoreErrorKind {
+    #[error("unable to convert symlink destination to UTF-8")]
+    NonUtf8SymlinkTarget,
+
+    #[error("unable to convert file name to UTF-8")]
+    NonUtf8Basename,
+
+    #[error("got unknown file type {0}")]
+    UnknownFileType(String),
+
+    #[error("directory entries with empty names are invalid")]
+    EmptyBasename,
+
+    #[error("symlinks are unsupported on this system")]
+    #[cfg(not(any(unix, windows)))]
+    SymlinksUnsupported,
+
+    #[error("store dump declined to overwrite file")]
+    /// NOTE: this obviously gets attached to the directory name
+    OverwriteDeclined,
+
+    #[error("I/O error: {desc}")]
+    // NOTE: the `desc` already contains the os error code, don't print it 2 times.
+    IoMisc { errno: Option<i32>, desc: String },
+}
+
+impl From<std::io::Error> for StoreErrorKind {
+    #[inline]
+    fn from(e: std::io::Error) -> StoreErrorKind {
+        StoreErrorKind::IoMisc {
+            errno: e.raw_os_error(),
+            desc: e.to_string(),
         }
     }
 }

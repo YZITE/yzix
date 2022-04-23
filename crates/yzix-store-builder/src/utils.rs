@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::{marker::Unpin, path::Path, sync::Arc};
 use tokio::sync::broadcast::{self, Receiver, Sender};
 use tracing::trace;
-use yzix_proto_core::{BuildError, Dump, OutputName, StoreHash, TaskBoundResponse};
+use yzix_core::{BuildError, Dump, OutputName, StoreHash, TaskBoundResponse};
 
 async fn handle_logging_to_intermed<T: tokio::io::AsyncRead + Unpin>(
     log: Sender<String>,
@@ -225,7 +225,7 @@ pub async fn handle_process(
         inhash,
         refs,
         inner:
-            yzix_proto_core::WorkItem {
+            yzix_core::WorkItem {
                 args,
                 mut envs,
                 outputs,
@@ -333,7 +333,7 @@ pub async fn handle_process(
                 tokio::task::block_in_place(|| {
                     let dump = Dump::read_from_path(&fake_store.join(&plh.to_string()))?;
                     let outhash = StoreHash::hash_complex::<Dump>(&dump);
-                    Ok::<_, yzix_proto_core::StoreError>((i, (plh, dump, outhash)))
+                    Ok::<_, yzix_core::StoreError>((i, (plh, dump, outhash)))
                 })
             })
             .collect::<Result<_, _>>()?;
@@ -347,7 +347,7 @@ pub async fn handle_process(
                     .collect(),
             };
             for (_, v, _) in &mut outputs.values_mut() {
-                yzix_proto_core::visit_bytes::Element::accept_mut(v, &mut &rwtr);
+                yzix_core::visit_bytes::Element::accept_mut(v, &mut &rwtr);
             }
         }
         Ok(outputs

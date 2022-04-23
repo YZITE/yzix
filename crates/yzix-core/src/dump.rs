@@ -2,7 +2,7 @@
 // quickly, and the user isn't annoyed that it compiles, but doesn't work at runtime.
 #![cfg(unix)]
 
-use super::{Error, ErrorKind};
+use super::{StoreError as Error, StoreErrorKind as ErrorKind};
 use crate::visit_bytes as yvb;
 use camino::Utf8PathBuf;
 use std::{fs, path::Path};
@@ -18,7 +18,7 @@ pub enum Dump {
 
 // sort-of NAR serialization impl
 impl crate::Serialize for Dump {
-    fn serialize<H: crate::Update>(&self, state: &mut H) {
+    fn serialize<H: crate::SerUpdate>(&self, state: &mut H) {
         "(".serialize(state);
         "type".serialize(state);
         match self {

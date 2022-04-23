@@ -10,7 +10,7 @@
 use core::fmt;
 use serde::{Deserialize, Serialize};
 
-pub use yzix_proto_core::*;
+pub use yzix_core::*;
 
 mod codec;
 pub use codec::*;

@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use yzix_proto_core::{StoreHash, WorkItem};
+use yzix_core::{StoreHash, WorkItem};
 
 pub struct FullWorkItem {
     pub inhash: StoreHash,
@@ -9,7 +9,7 @@ pub struct FullWorkItem {
 
 impl FullWorkItem {
     pub fn new(inner: WorkItem, store_path: &camino::Utf8Path) -> Self {
-        use yzix_proto_core::Serialize as _;
+        use yzix_core::Serialize as _;
 
         let mut hasher = StoreHash::get_hasher();
         inner.serialize(&mut hasher);
@@ -19,7 +19,7 @@ impl FullWorkItem {
             spec: &stspec,
             refs: Default::default(),
         };
-        yzix_proto_core::visit_bytes::Element::accept(&inner, &mut e);
+        yzix_core::visit_bytes::Element::accept(&inner, &mut e);
         Self {
             inhash,
             refs: e.refs,

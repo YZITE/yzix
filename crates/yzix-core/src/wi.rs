@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use yzix_store as ys;
 
 #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct WorkItem {
@@ -8,8 +7,8 @@ pub struct WorkItem {
     pub outputs: BTreeSet<crate::OutputName>,
 }
 
-impl ys::Serialize for WorkItem {
-    fn serialize<U: ys::Update>(&self, state: &mut U) {
+impl crate::Serialize for WorkItem {
+    fn serialize<U: crate::SerUpdate>(&self, state: &mut U) {
         "(".serialize(state);
         "workitem".serialize(state);
         "args".serialize(state);
@@ -34,12 +33,12 @@ impl ys::Serialize for WorkItem {
     }
 }
 
-impl ys::visit_bytes::Element for WorkItem {
-    fn accept<V: ys::visit_bytes::Visitor>(&self, visitor: &mut V) {
+impl crate::visit_bytes::Element for WorkItem {
+    fn accept<V: crate::visit_bytes::Visitor>(&self, visitor: &mut V) {
         self.args.iter().for_each(|x| x.accept(visitor));
         self.envs.values().for_each(|x| x.accept(visitor));
     }
-    fn accept_mut<V: ys::visit_bytes::VisitorMut>(&mut self, visitor: &mut V) {
+    fn accept_mut<V: crate::visit_bytes::VisitorMut>(&mut self, visitor: &mut V) {
         self.args.iter_mut().for_each(|x| x.accept_mut(visitor));
         self.envs.values_mut().for_each(|x| x.accept_mut(visitor));
     }

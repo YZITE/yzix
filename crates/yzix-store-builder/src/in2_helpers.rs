@@ -4,7 +4,7 @@ use std::io::{Error, ErrorKind};
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use tracing::{self, error, trace};
-use yzix_proto_core::{OutputName, StoreHash};
+use yzix_core::{OutputName, StoreHash};
 
 /// tries to resolve an input realisation 'cache' entry (`*.in2` paths in the store)
 /// * `target` should be the target read via `read_link`

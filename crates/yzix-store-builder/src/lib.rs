@@ -16,7 +16,7 @@ use tokio::task::{block_in_place, spawn_blocking};
 use tracing::{debug, error, span, trace, warn, Level};
 use tracing_futures::Instrument as _;
 use yzix_pool::Pool;
-use yzix_proto_core::{Dump, DumpFlags, StoreError, StoreHash, TaskBoundResponse};
+use yzix_core::{Dump, DumpFlags, StoreError, StoreHash, TaskBoundResponse};
 
 mod fwi;
 use fwi::FullWorkItem;
@@ -35,7 +35,7 @@ pub enum ControlMessage {
         answ_chan: oneshot::Sender<bool>,
     },
     SubmitTask {
-        item: yzix_proto_core::WorkItem,
+        item: yzix_core::WorkItem,
         subscribe: Option<mpsc::Sender<(TaskId, Arc<TaskBoundResponse>)>>,
         answ_chan: oneshot::Sender<TaskId>,
     },
@@ -319,7 +319,7 @@ pub async fn main(
                         let _ = ent
                             .logs
                             .send(Arc::new(TaskBoundResponse::BuildError(
-                                yzix_proto_core::BuildError::KilledByClient,
+                                yzix_core::BuildError::KilledByClient,
                             )))
                             .is_err();
                         true

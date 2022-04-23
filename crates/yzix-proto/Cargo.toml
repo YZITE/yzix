@@ -1,5 +1,6 @@
 [package]
 name = "yzix-proto"
+description = "Yzix client-server protocol"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0 WITH LLVM-exception"
@@ -22,5 +23,5 @@ version = "1.17"
 version = "0.7"
 features = ["codec"]
 
-[dependencies.yzix-proto-core]
-path = "../yzix-proto-core"
+[dependencies.yzix-core]
+path = "../yzix-core"

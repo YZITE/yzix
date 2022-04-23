@@ -1,5 +1,5 @@
 [package]
-name = "yzix-store"
+name = "yzix-core"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0 WITH LLVM-exception"
@@ -21,8 +21,7 @@ default-features = false
 
 [dependencies.serde]
 version = "1.0"
-default-features = false
-features = ["derive", "std"]
+features = ["derive"]
 
 [target.'cfg(unix)'.dependencies]
 xattr = "0.2"

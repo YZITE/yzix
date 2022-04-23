@@ -1622,6 +1622,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "yzix-core"
+version = "0.1.0"
+dependencies = [
+ "base64 0.20.0-alpha.1",
+ "blake2",
+ "camino",
+ "digest",
+ "filetime",
+ "once_cell",
+ "proptest",
+ "serde",
+ "serde_test",
+ "thiserror",
+ "xattr",
+]
+
+[[package]]
 name = "yzix-pool"
 version = "0.1.0"
 dependencies = [
@@ -1640,16 +1657,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
- "yzix-proto-core",
-]
-
-[[package]]
-name = "yzix-proto-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "thiserror",
- "yzix-store",
+ "yzix-core",
 ]
 
 [[package]]
@@ -1665,23 +1673,6 @@ dependencies = [
  "tracing-subscriber",
  "yzix-proto",
  "yzix-store-builder",
-]
-
-[[package]]
-name = "yzix-store"
-version = "0.1.0"
-dependencies = [
- "base64 0.20.0-alpha.1",
- "blake2",
- "camino",
- "digest",
- "filetime",
- "once_cell",
- "proptest",
- "serde",
- "serde_test",
- "thiserror",
- "xattr",
 ]
 
 [[package]]
@@ -1701,8 +1692,8 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-futures",
+ "yzix-core",
  "yzix-pool",
- "yzix-proto-core",
 ]
 
 [[package]]
