@@ -1,6 +1,7 @@
+use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Default, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct WorkItem {
     pub args: Vec<String>,
     pub envs: BTreeMap<String, String>,
@@ -10,6 +11,17 @@ pub struct WorkItem {
     // serialize a dump to the store to use it only once
     // the files get placed into the `/build` directory
     pub files: BTreeMap<crate::BaseName, crate::Dump>,
+}
+
+impl fmt::Debug for WorkItem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WorkItem")
+            .field("args", &self.args)
+            .field("envs", &self.envs)
+            .field("outputs", &self.outputs)
+            .field("files", &crate::strwrappers::FilesDebug(&self.files))
+            .finish()
+    }
 }
 
 impl crate::Serialize for WorkItem {

@@ -79,13 +79,14 @@ impl Driver {
                             WorkMessage::SubmitTask { data, answ_chan } => {
                                 use std::collections::hash_map::Entry;
                                 let tid = StoreHash::hash_complex(&data);
-                                tracing::info!("{}: submitted", tid);
+                                tracing::info!("{}: submitting", tid);
                                 if let Err(e) = wbs.send(
                                     Req::SubmitTask { item: data, subscribe2log: true }
                                 ).await {
                                     tracing::error!("connection error: {}", e);
                                     break;
                                 }
+                                tracing::info!("{}: submitted", tid);
                                 match running.entry(tid) {
                                     Entry::Occupied(mut occ) => occ.get_mut().answ_chans.push(answ_chan),
                                     Entry::Vacant(vac) => {

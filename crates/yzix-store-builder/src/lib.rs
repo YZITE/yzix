@@ -9,6 +9,7 @@
 
 pub use camino::{Utf8Path, Utf8PathBuf};
 use std::collections::{BTreeMap, HashSet};
+use std::fmt;
 use std::mem::drop;
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, oneshot};
@@ -52,6 +53,23 @@ pub enum ControlMessage {
         outhash: StoreHash,
         answ_chan: oneshot::Sender<Result<Dump, StoreError>>,
     },
+}
+
+impl fmt::Display for ControlMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Kill { task_id, .. } => write!(f, "Kill({})", task_id),
+            Self::SubmitTask {
+                item, subscribe, ..
+            } if subscribe.is_some() => write!(f, "SubmitTask+log({:?})", item),
+            Self::SubmitTask { item, .. } => write!(f, "SubmitTask({:?})", item),
+            Self::Upload { dump, .. } => {
+                write!(f, "Upload(..@ {})", StoreHash::hash_complex(dump))
+            }
+            Self::HasOutHash { outhash, .. } => write!(f, "HasOutHash({})", outhash),
+            Self::Download { outhash, .. } => write!(f, "Download({})", outhash),
+        }
+    }
 }
 
 pub struct Args {
@@ -319,6 +337,7 @@ pub async fn main(
 
     // main loop
     while let Some(req) = ctrl_r.recv().await {
+        trace!("received ctrlmsg: {}", req);
         match req {
             Cm::Kill { task_id, answ_chan } => {
                 use std::collections::btree_map::Entry;
@@ -349,34 +368,38 @@ pub async fn main(
                     if let Some(x) = subscribe {
                         tokio::spawn(handle_subscribe(inhash, apt.logs.subscribe(), x));
                     }
-                } else {
-                    let inpath = env
-                        .store_path
-                        .join(format!("{}{}", inhash, INPUT_REALISATION_DIR_POSTFIX));
-                    let ex_outputs = in2_helpers::resolve_in2(inpath.as_std_path());
-                    if !ex_outputs.is_empty() {
-                        if let Some(x) = subscribe {
-                            tokio::spawn(async move {
-                                let _ = x
-                                    .send((
-                                        inhash,
-                                        Arc::new(TaskBoundResponse::BuildSuccess(ex_outputs)),
-                                    ))
-                                    .await
-                                    .is_ok();
-                            });
-                        }
-                    } else {
-                        handle_submit_task(HandleSubmitTaskEnv {
-                            parent: env.clone(),
-                            containerpool: containerpool.clone(),
-
-                            inpath,
-                            item,
-                            subscribe,
-                        })
-                        .await;
+                    let _ = answ_chan.send(inhash).is_err();
+                    // we can't use an `else` block below because if we would do that,
+                    // the lock taken above wouldn't be released before potentially
+                    // `handle_submit_task` is entered, which would then deadlock.
+                    continue;
+                }
+                let inpath = env
+                    .store_path
+                    .join(format!("{}{}", inhash, INPUT_REALISATION_DIR_POSTFIX));
+                let ex_outputs = in2_helpers::resolve_in2(inpath.as_std_path());
+                if !ex_outputs.is_empty() {
+                    if let Some(x) = subscribe {
+                        tokio::spawn(async move {
+                            let _ = x
+                                .send((
+                                    inhash,
+                                    Arc::new(TaskBoundResponse::BuildSuccess(ex_outputs)),
+                                ))
+                                .await
+                                .is_ok();
+                        });
                     }
+                } else {
+                    handle_submit_task(HandleSubmitTaskEnv {
+                        parent: env.clone(),
+                        containerpool: containerpool.clone(),
+
+                        inpath,
+                        item,
+                        subscribe,
+                    })
+                    .await;
                 }
                 let _ = answ_chan.send(inhash).is_err();
             }
@@ -439,4 +462,6 @@ pub async fn main(
             }
         }
     }
+
+    trace!("shutting down");
 }

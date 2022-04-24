@@ -124,6 +124,20 @@ impl convert::AsRef<Path> for BaseName {
     }
 }
 
+pub(crate) struct FilesDebug<'a>(pub(crate) &'a std::collections::BTreeMap<BaseName, crate::Dump>);
+
+impl fmt::Debug for FilesDebug<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map()
+            .entries(
+                self.0
+                    .iter()
+                    .map(|(k, v)| (&k.0, crate::StoreHash::hash_complex(v))),
+            )
+            .finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{is_default_output, OutputName};
