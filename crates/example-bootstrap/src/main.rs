@@ -574,9 +574,10 @@ async fn main() -> anyhow::Result<()> {
         make -j4
         make install
 
-        [ -d `dirname $($out/bin/x86_64-linux-gcc -print-libgcc-file-name)`/install-tools/include ] && \\
-          cat ../$sourceRoot/gcc/limitx.h ../$sourceRoot/gcc/glimits.h ../$sourceRoot/gcc/limity.h > \\
-            `dirname $($out/bin/x86_64-linux-gcc -print-libgcc-file-name)`/install-tools/include/limits.h
+        [ -d `dirname $($out/bin/x86_64-linux-gcc -print-libgcc-file-name)`/install-tools/include ] \\
+          && cat ../$sourceRoot/gcc/limitx.h ../$sourceRoot/gcc/glimits.h ../$sourceRoot/gcc/limity.h > \\
+            `dirname $($out/bin/x86_64-linux-gcc -print-libgcc-file-name)`/install-tools/include/limits.h \\
+          || true
     "};
 
     let driver2 = driver.clone();
