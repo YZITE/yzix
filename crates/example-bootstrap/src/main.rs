@@ -119,7 +119,12 @@ async fn gen_wrappers(
 
     let mut dir: BTreeMap<yzix_client::BaseName, _> = ["gcc", "g++"]
         .into_iter()
-        .map(|i| (i.to_string().try_into().unwrap(), gen_wrapper(store_path, bootstrap_tools, i)))
+        .map(|i| {
+            (
+                i.to_string().try_into().unwrap(),
+                gen_wrapper(store_path, bootstrap_tools, i),
+            )
+        })
         .collect();
 
     for (from, to) in [("gcc", "cc"), ("g++", "cpp"), ("cxx", "g++")] {
@@ -127,7 +132,8 @@ async fn gen_wrappers(
     }
 
     let mut dump = Dump::Directory(dir);
-    dump = Dump::Directory(std::iter::once(("bin".to_string().try_into().unwrap(), dump)).collect());
+    dump =
+        Dump::Directory(std::iter::once(("bin".to_string().try_into().unwrap(), dump)).collect());
     smart_upload(driver, dump, "genWrappers").await
 }
 
@@ -255,7 +261,10 @@ async fn main() -> anyhow::Result<()> {
                 "src",
                 format!("{}/{}", store_path, kernel_headers_src),
             )]),
-            args: vec![format!("{}/{}", store_path, buildsh), "/build/build.sh".to_string()],
+            args: vec![
+                format!("{}/{}", store_path, buildsh),
+                "/build/build.sh".to_string(),
+            ],
             outputs: mk_outputs(vec!["out"]),
             files: mk_envfiles(vec![(
                 "build.sh",
