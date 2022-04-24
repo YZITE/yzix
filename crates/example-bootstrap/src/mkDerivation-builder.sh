@@ -1,5 +1,32 @@
 #!@bootstrapTools@/bin/bash -e
 
+updateSourceDateEpoch() {
+    local path="$1"
+
+    # Get the last modification time of all regular files, sort them,
+    # and get the most recent. Maybe we should use
+    # https://github.com/0-wiz-0/findnewest here.
+    local -a res=($(find "$path" -type f -not -newer "$NIX_BUILD_TOP/.." -printf '%T@ %p\0' \
+                    | sort -n --zero-terminated | tail -n1 --zero-terminated | head -c -1))
+    local time="${res[0]//\.[0-9]*/}" # remove the fraction part
+    local newestFile="${res[1]}"
+
+    # Update $SOURCE_DATE_EPOCH if the most recent file we found is newer.
+    if [ "${time:-0}" -gt "$SOURCE_DATE_EPOCH" ]; then
+        echo "setting SOURCE_DATE_EPOCH to timestamp $time of file $newestFile"
+        export SOURCE_DATE_EPOCH="$time"
+
+        # Warn if the new timestamp is too close to the present. This
+        # may indicate that we were being applied to a file generated
+        # during the build, or that an unpacker didn't restore
+        # timestamps properly.
+        local now="$(date +%s)"
+        if [ "$time" -gt $((now - 60)) ]; then
+            echo "warning: file $newestFile may be generated; SOURCE_DATE_EPOCH may be non-deterministic"
+        fi
+    fi
+}
+
 NIX_WRAPPER_gcc_ARGS="-Wl,--dynamic-linker=@bootstrapTools@/lib/ld-linux.so.2"
 
 for path in @bootstrapTools@/include-glibc \
@@ -32,10 +59,11 @@ ln -sT @bootstrapTools@/bin /bin
 
 if ! [ -d "$src" ]; then
   mv -t/tmp *
-  tar -xf "$src" -C .
-  sourceRoot="$(ls | head -1)"
+  tar --no-same-owner -xf "$src" -C .
+  export sourceRoot="$(ls | head -1)"
   mv -t. /tmp/*
   echo sourceRoot is "$sourceRoot"
+  updateSourceDateEpoch "$sourceRoot"
   cd "$sourceRoot"
 else
   cd "$src"

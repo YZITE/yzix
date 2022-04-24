@@ -1,5 +1,6 @@
 use indoc::indoc;
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 use tracing::{error, info};
 use yzix_client::{Driver, Dump, OutputName, StoreHash, TaskBoundResponse as Tbr, WorkItem};
 
@@ -137,6 +138,66 @@ async fn gen_wrappers(
     smart_upload(driver, dump, "genWrappers").await
 }
 
+#[derive(Clone)]
+struct Runner {
+    notif: tokio::sync::watch::Receiver<Result<BTreeMap<OutputName, StoreHash>, ()>>,
+}
+
+impl Runner {
+    fn new_fetchu(
+        driver: &Driver,
+        url: &'static str,
+        expect_hash: &'static str,
+        with_path: &'static str,
+        executable: bool,
+    ) -> Self {
+        let (notif_s, notif) = tokio::sync::watch::channel(Err(()));
+        let driver = driver.clone();
+        tokio::spawn(async move {
+            let res = match fetchurl(&driver, url, expect_hash, with_path, executable).await {
+                Ok(out) => Ok(core::iter::once((OutputName::default(), out)).collect()),
+                Err(e) => {
+                    error!("{} => {:?}", url, e);
+                    Err(())
+                }
+            };
+            let _ = notif_s.send(res).is_ok();
+        });
+        Self { notif }
+    }
+
+    fn new_wi(
+        driver: &Driver,
+        name: &'static str,
+        wi: impl std::future::Future<Output = Result<WorkItem, ()>> + Send + 'static,
+    ) -> Self {
+        let (notif_s, notif) = tokio::sync::watch::channel(Err(()));
+        let driver = driver.clone();
+        tokio::spawn(async move {
+            let res = match wi.await {
+                Ok(wi2) => match driver.run_task(wi2).await {
+                    Tbr::BuildSuccess(outs) => {
+                        info!("{} => {:?}", name, outs);
+                        Ok(outs)
+                    }
+                    e => {
+                        error!("{} => {:?}", name, e);
+                        Err(())
+                    }
+                },
+                Err(()) => Err(()),
+            };
+            let _ = notif_s.send(res).is_ok();
+        });
+        Self { notif }
+    }
+
+    async fn want(&mut self) -> Result<BTreeMap<OutputName, StoreHash>, ()> {
+        let _ = self.notif.changed().await.is_ok();
+        self.notif.borrow_and_update().clone()
+    }
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     /* === environment setup === */
@@ -158,7 +219,7 @@ async fn main() -> anyhow::Result<()> {
 
     /* === seed === */
 
-    let store_path = driver.store_path().await;
+    let store_path = Arc::new(driver.store_path().await);
 
     let h_busybox = fetchurl(
         &driver,
@@ -236,15 +297,6 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    let kernel_headers_src = fetchurl(
-        &driver,
-        "https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.16.tar.xz",
-        "Z6afPd9StYWqNcEaB6Ax1kXor6pZilBRHLRvKD+GWjM",
-        "",
-        false,
-    )
-    .await?;
-
     let kernel_headers_script = indoc! {"
         make ARCH=x86 headers
         mkdir -p $out
@@ -252,14 +304,28 @@ async fn main() -> anyhow::Result<()> {
         find $out -type f ! -name '*.h' -delete
     "};
 
-    let kernel_headers = driver
-        .run_task(WorkItem {
+    let driver2 = driver.clone();
+    let store_path2 = store_path.clone();
+    let mut kernel_headers = Runner::new_wi(&driver, "kernel-headers", async move {
+        Ok(WorkItem {
             envs: mk_envs(vec![(
                 "src",
-                format!("{}/{}", store_path, kernel_headers_src),
+                format!(
+                    "{}/{}",
+                    store_path2,
+                    Runner::new_fetchu(
+                        &driver2,
+                        "https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.16.tar.xz",
+                        "Z6afPd9StYWqNcEaB6Ax1kXor6pZilBRHLRvKD+GWjM",
+                        "",
+                        false,
+                    )
+                    .want()
+                    .await?["out"]
+                ),
             )]),
             args: vec![
-                format!("{}/{}", store_path, buildsh),
+                format!("{}/{}", store_path2, buildsh),
                 "/build/build.sh".to_string(),
             ],
             outputs: mk_outputs(vec!["out"]),
@@ -271,13 +337,81 @@ async fn main() -> anyhow::Result<()> {
                 },
             )]),
         })
-        .await;
+    });
 
-    info!("kernel_headers = {:?}", kernel_headers);
+    let binutils_script = indoc! {"
+        set -xe
+        ls -las
+        while read PATCHFILE; do patch -p1 \"$PATCHFILE\"; done < ../patches; unset PATCHFILE
+        cd ..
+        mkdir build
+        cd build
+        \"../$sourceRoot/configure\" --prefix=\"$out\" --host=x86_64-linux --disable-nls --disable-werror --enable-deterministic-archives
+        make
+        make install
+    "};
 
-    let kernel_headers = match kernel_headers {
-        Tbr::BuildSuccess(outs) => outs["out"],
+    let driver2 = driver.clone();
+    let store_path2 = store_path.clone();
+    let mut binutils = Runner::new_wi(&driver, "binutils", async move {
+        let mut src = Runner::new_fetchu(
+            &driver2,
+            //"http://ftp.gnu.org/gnu/binutils/binutils-2.38.tar.xz",
+            //"dWdbr5ALD_NFkb2GxUznkedusXS9uMaTLdcYarsxt7M",
+            "http://ftp.gnu.org/gnu/binutils/binutils-2.37.tar.xz",
+            "pR3S4OOkDJr_Xl58nSnQIt_Og45RwvizPKi17rC8r9w",
+            "",
+            false,
+        );
+        let mut asrp = Runner::new_fetchu(
+            &driver2,
+            "https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/development/tools/misc/binutils/always-search-rpath.patch",
+            "ZSPPSmFnykfdxs7m2K0TZFRgSg5vdktZpbsJ9_5V0qc",
+            "",
+            true,
+        );
+        Ok(WorkItem {
+            envs: mk_envs(vec![(
+                "src",
+                format!("{}/{}", store_path2, src.want().await?["out"]),
+            )]),
+            args: vec![
+                format!("{}/{}", store_path2, buildsh),
+                "/build/build.sh".to_string(),
+            ],
+            outputs: mk_outputs(vec!["out"]),
+            files: mk_envfiles(vec![
+                (
+                    "build.sh",
+                    Dump::Regular {
+                        executable: true,
+                        contents: binutils_script.to_string().into_bytes(),
+                    },
+                ),
+                (
+                    "patches",
+                    Dump::Regular {
+                        executable: false,
+                        contents: vec![asrp.want().await?["out"]]
+                            .into_iter()
+                            .map(|i| format!("{}/{}\n", store_path2, i))
+                            .collect::<Vec<_>>()
+                            .join("")
+                            .into_bytes(),
+                    },
+                ),
+            ]),
+        })
+    });
+
+    let kernel_headers = match kernel_headers.want().await {
+        Ok(outs) => outs["out"],
         _ => anyhow::bail!("unable to build kernel headers"),
+    };
+
+    let binutils = match binutils.want().await {
+        Ok(outs) => outs["out"],
+        _ => anyhow::bail!("unable to build binutils"),
     };
 
     Ok(())
