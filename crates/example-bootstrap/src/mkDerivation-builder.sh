@@ -31,8 +31,10 @@ export NIX_WRAPPER_gcc_ARGS
 ln -sT @bootstrapTools@/bin /bin
 
 if ! [ -d "$src" ]; then
-  tar -xf "$src"
+  mv -t/tmp *
+  tar -xf "$src" -C .
   sourceRoot="$(ls | head -1)"
+  mv -t. /tmp/*
   echo sourceRoot is "$sourceRoot"
   cd "$sourceRoot"
 else

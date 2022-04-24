@@ -160,10 +160,11 @@ async fn main() -> anyhow::Result<()> {
 
     let store_path = driver.store_path().await;
 
-    let dump_busybox = fetchurl_outside_store(
+    let h_busybox = fetchurl(
+        &driver,
         "http://tarballs.nixos.org/stdenv-linux/i686/4907fc9e8d0d82b28b3c56e3a478a2882f1d700f/busybox",
-        "AtMeYP1lxrUD2kR+QmhW+E1l06QXFqsw3wOj87bC4X4",
-        "",
+        "liAXAxlPQSRlEjqQFgoewxVmQTv73rfukUCyyPZfsKI",
+        "busybox",
         true,
     );
 
@@ -175,7 +176,8 @@ async fn main() -> anyhow::Result<()> {
         false,
     );
 
-    let dump_unpack_bootstrap_tools = fetchurl_outside_store(
+    let h_unpack_bootstrap_tools = fetchurl(
+        &driver,
         "https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/stdenv/linux/bootstrap-tools/scripts/unpack-bootstrap-tools.sh",
         "ow8ctEPXY74kphwpR0SAb2fIbZ7FmFr8EnxmPH80_sY",
         "",
@@ -184,31 +186,26 @@ async fn main() -> anyhow::Result<()> {
 
     /* === bootstrap stage 0 === */
 
-    let (dump_busybox, h_bootstrap_tools, dump_unpack_bootstrap_tools) =
-        tokio::join!(dump_busybox, h_bootstrap_tools, dump_unpack_bootstrap_tools);
-    let (dump_busybox, h_bootstrap_tools, dump_unpack_bootstrap_tools) = (
-        dump_busybox?,
-        h_bootstrap_tools?,
-        dump_unpack_bootstrap_tools?,
-    );
+    let (h_busybox, h_bootstrap_tools, h_unpack_bootstrap_tools) =
+        tokio::join!(h_busybox, h_bootstrap_tools, h_unpack_bootstrap_tools);
+    let (h_busybox, h_bootstrap_tools, h_unpack_bootstrap_tools) =
+        (h_busybox?, h_bootstrap_tools?, h_unpack_bootstrap_tools?);
 
+    let bb = format!("{}/{}/busybox", store_path, h_busybox);
     let bootstrap_tools = driver
         .run_task(WorkItem {
             envs: mk_envs(vec![
-                ("builder", "/build/busybox".to_string()),
+                ("builder", bb.to_string()),
                 ("tarball", format!("{}/{}", store_path, h_bootstrap_tools)),
             ]),
             args: vec![
-                "/build/busybox".to_string(),
+                bb.to_string(),
                 "ash".to_string(),
                 "-e".to_string(),
-                "/build/unpack-bootstrap-tools.sh".to_string(),
+                format!("{}/{}", store_path, h_unpack_bootstrap_tools),
             ],
             outputs: mk_outputs(vec!["out"]),
-            files: mk_envfiles(vec![
-                ("busybox", dump_busybox),
-                ("unpack-bootstrap-tools.sh", dump_unpack_bootstrap_tools),
-            ]),
+            files: mk_envfiles(vec![]),
         })
         .await;
 
