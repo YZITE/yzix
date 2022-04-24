@@ -4,7 +4,7 @@ use std::{borrow::Borrow, path::Path};
 macro_rules! make_strwrapper {
     ($name:ident ( $inp:ident ) || $errmsg:expr; { $($x:tt)* }) => {
         #[derive(
-            Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash,
+            Clone, PartialEq, Eq, PartialOrd, Ord, Hash,
             serde::Deserialize, serde::Serialize
         )]
         #[serde(try_from = "String", into = "String")]
@@ -68,6 +68,13 @@ macro_rules! make_strwrapper {
             }
         }
 
+        impl fmt::Debug for $name {
+            #[inline]
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{:?}", self.0)
+            }
+        }
+
         impl fmt::Display for $name {
             #[inline(always)]
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -128,13 +135,11 @@ pub(crate) struct FilesDebug<'a>(pub(crate) &'a std::collections::BTreeMap<BaseN
 
 impl fmt::Debug for FilesDebug<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_map()
-            .entries(
-                self.0
-                    .iter()
-                    .map(|(k, v)| (&k.0, crate::StoreHash::hash_complex(v))),
-            )
-            .finish()
+        let mut dm = f.debug_map();
+        for (k, v) in self.0 {
+            dm.entry(&k.0, &format_args!("{}", v));
+        }
+        dm.finish()
     }
 }
 

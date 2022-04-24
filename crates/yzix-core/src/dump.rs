@@ -5,7 +5,7 @@
 use super::{StoreError as Error, StoreErrorKind as ErrorKind};
 use crate::visit_bytes as yvb;
 use camino::Utf8PathBuf;
-use std::{fs, path::Path};
+use std::{fmt, fs, path::Path};
 
 /// sort-of emulation of NAR
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -14,6 +14,13 @@ pub enum Dump {
     Regular { executable: bool, contents: Vec<u8> },
     SymLink { target: Utf8PathBuf },
     Directory(std::collections::BTreeMap<crate::BaseName, Dump>),
+}
+
+impl fmt::Display for Dump {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        crate::StoreHash::hash_complex(self).fmt(f)
+    }
 }
 
 // sort-of NAR serialization impl

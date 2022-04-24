@@ -3,7 +3,7 @@ use blake2::{digest::consts::U32, Blake2b, Digest as _};
 use once_cell::sync::Lazy;
 use std::{convert, fmt};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 pub struct Hash(pub [u8; 32]);
 
 static B64_ALPHABET: Lazy<base64::alphabet::Alphabet> = Lazy::new(|| {
@@ -26,6 +26,13 @@ impl fmt::Display for Hash {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&base64::encode_engine(self.0, &*B64_ENGINE))
+    }
+}
+
+impl fmt::Debug for Hash {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\"{}\"", self)
     }
 }
 
