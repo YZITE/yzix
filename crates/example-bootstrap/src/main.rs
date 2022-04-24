@@ -109,10 +109,11 @@ async fn gen_wrappers(
         Dump::Regular {
             executable: true,
             contents: format!(
-                "#!{stp}/{bst}/bin/bash\nexec {stp}/{bst}/bin/{elem} $NIX_WRAPPER_{elem}_ARGS \"$@\"\n",
+                "#!{stp}/{bst}/bin/bash\nexec {stp}/{bst}/bin/{elem} $NIX_WRAPPER_{elemshv}_ARGS \"$@\"\n",
                 stp = store_path,
                 bst = bootstrap_tools,
                 elem = element,
+                elemshv = element.replace("++", "xx"),
             )
             .into_bytes(),
         }

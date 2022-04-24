@@ -29,7 +29,21 @@ updateSourceDateEpoch() {
 
 first_arg() { echo "$1"; }
 
-NIX_WRAPPER_gcc_ARGS="-Wl,--dynamic-linker=@bootstrapTools@/lib/ld-linux.so.2"
+BOOT_LIB="@bootstrapTools@/lib"
+if test -f $BOOT_LIB/ld.so.?; then
+   # MIPS case
+   LD_BINARY=$BOOT_LIB/ld.so.?
+elif test -f $BOOT_LIB/ld64.so.?; then
+   # ppc64(le)
+   LD_BINARY=$BOOT_LIB/ld64.so.?
+else
+   # i686, x86_64 and armv5tel
+   LD_BINARY=$BOOT_LIB/ld-*so.?
+fi
+LD_BINARY="$(eval echo $LD_BINARY)"
+
+NIX_WRAPPER_gcc_ARGS="-Wl,--dynamic-linker=$LD_BINARY"
+unset BOOT_LIB LD_BINARY
 
 for dep in $buildInputs; do
   NIX_WRAPPER_gcc_ARGS="$NIX_WRAPPER_gcc_ARGS -Wl,--rpath=$dep/lib -I $dep/include"
