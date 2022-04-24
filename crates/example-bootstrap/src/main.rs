@@ -341,8 +341,6 @@ async fn main() -> anyhow::Result<()> {
 
     let binutils_script = indoc! {"
         set -xe
-        ls -las
-        while read PATCHFILE; do patch -p1 \"$PATCHFILE\"; done < ../patches; unset PATCHFILE
         cd ..
         mkdir build
         cd build
@@ -404,6 +402,149 @@ async fn main() -> anyhow::Result<()> {
         })
     });
 
+    let h_gnu_generic_script = smart_upload(
+        &driver,
+        Dump::Regular {
+            executable: true,
+            contents: indoc! {"
+                set -xe
+                cd ..
+                mkdir build
+                cd build
+                \"../$sourceRoot/configure\" --prefix=\"$out\" --host=x86_64-linux
+                make
+                make install
+            "}.to_string().into_bytes(),
+        },
+        "gnu-generic-script",
+    )
+    .await?;
+
+    let driver2 = driver.clone();
+    let store_path2 = store_path.clone();
+    let gnum4 = Runner::new_wi(&driver, "gnum4", async move {
+        let mut src = Runner::new_fetchu(
+            &driver2,
+            "http://ftp.gnu.org/gnu/m4/m4-1.4.19.tar.xz",
+            "i0KjpKfM4RbyXz26vY41jdKIh6jpczykXCcw1_9hzxw",
+            "",
+            false,
+        );
+        Ok(WorkItem {
+            envs: mk_envs(vec![(
+                "src",
+                format!("{}/{}", store_path2, src.want().await?["out"]),
+            )]),
+            args: vec![
+                format!("{}/{}", store_path2, buildsh),
+                format!("{}/{}", store_path2, h_gnu_generic_script),
+            ],
+            outputs: mk_outputs(vec!["out"]),
+            files: mk_envfiles(vec![]),
+        })
+    });
+
+    let driver2 = driver.clone();
+    let store_path2 = store_path.clone();
+    let mut gnum4_ = gnum4.clone();
+    let gmp = Runner::new_wi(&driver, "gmp", async move {
+        let mut src = Runner::new_fetchu(
+            &driver2,
+            "http://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.xz",
+            "BN+S1KcfEM_ZyazWQAwkutnISAcxQmcYhhEqRyDw5wo",
+            "",
+            false,
+        );
+        Ok(WorkItem {
+            envs: mk_envs(vec![
+            (
+                "src",
+                format!("{}/{}", store_path2, src.want().await?["out"]),
+            ),
+            (
+                "buildInputs",
+                [
+                    gnum4_.want().await?["out"],
+                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
+            )
+            ]),
+            args: vec![
+                format!("{}/{}", store_path2, buildsh),
+                format!("{}/{}", store_path2, h_gnu_generic_script),
+            ],
+            outputs: mk_outputs(vec!["out"]),
+            files: mk_envfiles(vec![]),
+        })
+    });
+
+    let driver2 = driver.clone();
+    let store_path2 = store_path.clone();
+    let mut gmp_ = gmp.clone();
+    let mpfr = Runner::new_wi(&driver, "mpfr", async move {
+        let mut src = Runner::new_fetchu(
+            &driver2,
+            "http://ftp.gnu.org/gnu/mpfr/mpfr-4.1.0.tar.xz",
+            "I0xvlGlSGYy8EdaENBtjFJjiaYuaRw8FB5VWp5d4eJY",
+            "",
+            false,
+        );
+        Ok(WorkItem {
+            envs: mk_envs(vec![
+            (
+                "src",
+                format!("{}/{}", store_path2, src.want().await?["out"]),
+            ),
+            (
+                "buildInputs",
+                [
+                    gmp_.want().await?["out"],
+                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
+            )
+            ]),
+            args: vec![
+                format!("{}/{}", store_path2, buildsh),
+                format!("{}/{}", store_path2, h_gnu_generic_script),
+            ],
+            outputs: mk_outputs(vec!["out"]),
+            files: mk_envfiles(vec![]),
+        })
+    });
+
+    let driver2 = driver.clone();
+    let store_path2 = store_path.clone();
+    let mut gmp_ = gmp.clone();
+    let mut mpfr_ = mpfr.clone();
+    let mut mpc = Runner::new_wi(&driver, "mpc", async move {
+        let mut src = Runner::new_fetchu(
+            &driver2,
+            "http://ftp.gnu.org/gnu/mpc/mpc-1.2.1.tar.gz",
+            "OBypmXEnvXlpemFyE3vYcCRTOY9gKchO9ePiBhw5Qhk",
+            "",
+            false,
+        );
+        Ok(WorkItem {
+            envs: mk_envs(vec![
+            (
+                "src",
+                format!("{}/{}", store_path2, src.want().await?["out"]),
+            ),
+            (
+                "buildInputs",
+                [
+                    gmp_.want().await?["out"],
+                    mpfr_.want().await?["out"],
+                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
+            )
+            ]),
+            args: vec![
+                format!("{}/{}", store_path2, buildsh),
+                format!("{}/{}", store_path2, h_gnu_generic_script),
+            ],
+            outputs: mk_outputs(vec!["out"]),
+            files: mk_envfiles(vec![]),
+        })
+    });
+
     let kernel_headers = match kernel_headers.want().await {
         Ok(outs) => outs["out"],
         _ => anyhow::bail!("unable to build kernel headers"),
@@ -412,6 +553,11 @@ async fn main() -> anyhow::Result<()> {
     let binutils = match binutils.want().await {
         Ok(outs) => outs["out"],
         _ => anyhow::bail!("unable to build binutils"),
+    };
+
+    let mpc = match mpc.want().await {
+        Ok(outs) => outs["out"],
+        _ => anyhow::bail!("unable to build mpc"),
     };
 
     Ok(())

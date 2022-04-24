@@ -27,7 +27,14 @@ updateSourceDateEpoch() {
     fi
 }
 
+first_arg() { echo "$1"; }
+
 NIX_WRAPPER_gcc_ARGS="-Wl,--dynamic-linker=@bootstrapTools@/lib/ld-linux.so.2"
+
+for dep in $buildInputs; do
+  NIX_WRAPPER_gcc_ARGS="$NIX_WRAPPER_gcc_ARGS -Wl,--rpath=$dep/lib -I $dep/include"
+  PATH="$PATH:$dep/bin"
+done
 
 for path in @bootstrapTools@/include-glibc \
   @bootstrapTools@/lib/gcc/i686-unknown-linux-gnu/8.3.0/include \
@@ -37,11 +44,6 @@ done
 
 NIX_WRAPPER_gcc_ARGS="$NIX_WRAPPER_gcc_ARGS -Wl,--rpath=@bootstrapTools@/lib -I @bootstrapTools@/include"
 PATH="$PATH:@wrappers@/bin:@bootstrapTools@/bin"
-
-for dep in $buildInputs; do
-  NIX_WRAPPER_gcc_ARGS="$NIX_WRAPPER_gcc_ARGS -Wl,--rpath=$dep/lib -I $dep/include"
-  PATH="$PATH:$dep/bin"
-done
 
 NIX_WRAPPER_gxx_ARGS="$NIX_WRAPPER_gcc_ARGS"
 
@@ -58,18 +60,28 @@ export NIX_WRAPPER_gcc_ARGS
 ln -sT @bootstrapTools@/bin /bin
 
 if ! [ -d "$src" ]; then
-  mv -t/tmp *
-  tar --no-same-owner -xf "$src" -C .
-  export sourceRoot="$(ls | head -1)"
-  mv -t. /tmp/*
+  if [ -e "$(first_arg *)" ]; then
+    mv -t/tmp *
+    tar --no-same-owner -xf "$src" -C .
+    export sourceRoot="$(ls | head -1)"
+    mv -t. /tmp/*
+  else
+    tar --no-same-owner -xf "$src" -C .
+    export sourceRoot="$(ls | head -1)"
+  fi
   echo sourceRoot is "$sourceRoot"
   updateSourceDateEpoch "$sourceRoot"
   cd "$sourceRoot"
+  if [ -f ../patches ]; then
+    while read path; do
+      echo "Applying patch $path ..."
+      patch -p1 "$path"
+    done < ../patches
+  fi
 else
   cd "$src"
 fi
 
-type -p cpp
 env
 
 "$@" || exit 1
