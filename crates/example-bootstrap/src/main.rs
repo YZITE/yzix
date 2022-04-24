@@ -231,8 +231,8 @@ async fn main() -> anyhow::Result<()> {
 
     let h_bootstrap_tools = fetchurl(
         &driver,
-        "http://tarballs.nixos.org/stdenv-linux/i686/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz",
-        "V2QVvHUYOYoESuMSI89zKvlZWnYVhd4JtECfNQv+ll4",
+        "http://tarballs.nixos.org/stdenv-linux/x86_64/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz",
+        "ox+VaXgaAFWqqqHhxq7WwHHUdkg76x8dO3EDvlCas8U",
         "",
         false,
     );
@@ -306,7 +306,7 @@ async fn main() -> anyhow::Result<()> {
 
     let driver2 = driver.clone();
     let store_path2 = store_path.clone();
-    let mut kernel_headers = Runner::new_wi(&driver, "kernel-headers", async move {
+    let kernel_headers = Runner::new_wi(&driver, "kernel-headers", async move {
         Ok(WorkItem {
             envs: mk_envs(vec![(
                 "src",
@@ -344,14 +344,14 @@ async fn main() -> anyhow::Result<()> {
         cd ..
         mkdir build
         cd build
-        \"../$sourceRoot/configure\" --prefix=\"$out\" --host=x86_64-linux --disable-nls --disable-werror --enable-deterministic-archives
+        \"../$sourceRoot/configure\" --prefix=\"$out\" --disable-nls --disable-werror --enable-deterministic-archives
         make
         make install
     "};
 
     let driver2 = driver.clone();
     let store_path2 = store_path.clone();
-    let mut binutils = Runner::new_wi(&driver, "binutils", async move {
+    let binutils = Runner::new_wi(&driver, "binutils", async move {
         let mut src = Runner::new_fetchu(
             &driver2,
             //"http://ftp.gnu.org/gnu/binutils/binutils-2.38.tar.xz",
@@ -411,7 +411,7 @@ async fn main() -> anyhow::Result<()> {
                 cd ..
                 mkdir build
                 cd build
-                \"../$sourceRoot/configure\" --prefix=\"$out\" --host=x86_64-linux
+                \"../$sourceRoot/configure\" --prefix=\"$out\"
                 make
                 make install
             "}.to_string().into_bytes(),
@@ -514,7 +514,7 @@ async fn main() -> anyhow::Result<()> {
     let store_path2 = store_path.clone();
     let mut gmp_ = gmp.clone();
     let mut mpfr_ = mpfr.clone();
-    let mut mpc = Runner::new_wi(&driver, "mpc", async move {
+    let mpc = Runner::new_wi(&driver, "mpc", async move {
         let mut src = Runner::new_fetchu(
             &driver2,
             "http://ftp.gnu.org/gnu/mpc/mpc-1.2.1.tar.gz",
@@ -545,19 +545,101 @@ async fn main() -> anyhow::Result<()> {
         })
     });
 
-    let kernel_headers = match kernel_headers.want().await {
+    let gcc_script = indoc! {"
+        set -xe
+        sed -e '/m64=/s/lib64/lib/' -i.orig gcc/config/i386/t-linux64
+        cd ..
+        mkdir build
+        cd build
+        \"../$sourceRoot/configure\" --prefix=\"$out\" \\
+          --disable-libcc1 \\
+          --disable-bootstrap \\
+          --with-newlib \\
+          --without-headers \\
+          --enable-initfini-array \\
+          --disable-nls \\
+          --disable-shared \\
+          --disable-multilib \\
+          --disable-decimal-float \\
+          --disable-threads \\
+          --disable-libatomic \\
+          --disable-libgomp \\
+          --disable-libquadmath \\
+          --disable-libssp \\
+          --disable-libvtv \\
+          --disable-libstdcxx \\
+          --enable-languages=c,c++ \\
+
+        make -j4
+        make install
+
+        [ -d `dirname $($out/bin/x86_64-linux-gcc -print-libgcc-file-name)`/install-tools/include ] && \\
+          cat ../$sourceRoot/gcc/limitx.h ../$sourceRoot/gcc/glimits.h ../$sourceRoot/gcc/limity.h > \\
+            `dirname $($out/bin/x86_64-linux-gcc -print-libgcc-file-name)`/install-tools/include/limits.h
+    "};
+
+    let driver2 = driver.clone();
+    let store_path2 = store_path.clone();
+    let mut binutils_ = binutils.clone();
+    let mut gmp_ = gmp.clone();
+    let mut mpfr_ = mpfr.clone();
+    let mut mpc_ = mpc.clone();
+    let gcc = Runner::new_wi(&driver, "gcc", async move {
+        let mut src = Runner::new_fetchu(
+            &driver2,
+            //"http://ftp.gnu.org/gnu/gcc/gcc-11.2.0/gcc-11.2.0.tar.gz",
+            //"h3awRfXxv4uVCAML3UDhppwVtM2pvXqYJr9S+6PCaFA",
+            "http://ftp.gnu.org/gnu/gcc/gcc-10.2.0/gcc-10.2.0.tar.gz",
+            "pNeH0nV0lik1G7Ze5zKjKw8SJKdDCH8TIDIRIJUu3fA",
+            "",
+            false,
+        );
+        Ok(WorkItem {
+            envs: mk_envs(vec![
+            (
+                "src",
+                format!("{}/{}", store_path2, src.want().await?["out"]),
+            ),
+            (
+                "buildInputs",
+                [
+                    binutils_.want().await?["out"],
+                    gmp_.want().await?["out"],
+                    mpfr_.want().await?["out"],
+                    mpc_.want().await?["out"],
+                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
+            )
+            ]),
+            args: vec![
+                format!("{}/{}", store_path2, buildsh),
+                "/build/build.sh".to_string(),
+            ],
+            outputs: mk_outputs(vec!["out"]),
+            files: mk_envfiles(vec![
+                (
+                    "build.sh",
+                    Dump::Regular {
+                        executable: true,
+                        contents: gcc_script.to_string().into_bytes(),
+                    },
+                ),
+            ]),
+        })
+    });
+
+    let kernel_headers = match kernel_headers.clone().want().await {
         Ok(outs) => outs["out"],
         _ => anyhow::bail!("unable to build kernel headers"),
     };
 
-    let binutils = match binutils.want().await {
+    let binutils = match binutils.clone().want().await {
         Ok(outs) => outs["out"],
         _ => anyhow::bail!("unable to build binutils"),
     };
 
-    let mpc = match mpc.want().await {
+    let gcc = match gcc.clone().want().await {
         Ok(outs) => outs["out"],
-        _ => anyhow::bail!("unable to build mpc"),
+        _ => anyhow::bail!("unable to build gcc"),
     };
 
     Ok(())
