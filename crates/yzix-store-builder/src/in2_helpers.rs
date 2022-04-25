@@ -6,10 +6,10 @@ use std::path::{Path, PathBuf};
 use tracing::{self, error, trace};
 use yzix_core::{OutputName, StoreHash};
 
-/// tries to resolve an input realisation 'cache' entry (`*.in2` paths in the store)
+/// tries to resolve an input realisation 'cache' entry (`*.in` paths in the store)
 /// * `target` should be the target read via `read_link`
 /// * `super_dir` should be the expected parent of the target
-pub fn resolve_in2_from_target(target: PathBuf, super_dir: &Path) -> Option<StoreHash> {
+fn resolve_in2_from_target(target: PathBuf, super_dir: &Path) -> Option<StoreHash> {
     let x = target;
     if x.is_relative() && x.parent() == Some(super_dir) {
         x.file_name()
@@ -20,6 +20,7 @@ pub fn resolve_in2_from_target(target: PathBuf, super_dir: &Path) -> Option<Stor
     }
 }
 
+/// tries to resolve an input realisation 'cache' entry (`*.in` paths in the store)
 pub fn resolve_in2(realis_path: &Path) -> BTreeMap<OutputName, StoreHash> {
     if let Ok(rp) = std::fs::read_link(&realis_path) {
         resolve_in2_from_target(rp, Path::new(""))

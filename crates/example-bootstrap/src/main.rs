@@ -627,6 +627,114 @@ async fn main() -> anyhow::Result<()> {
         })
     });
 
+    let glibc_script = indoc! {"
+        set -xe
+        sed -e '/m64=/s/lib64/lib/' -i.orig gcc/config/i386/t-linux64
+        cd ..
+        mkdir build
+        cd build
+        \"../$sourceRoot/configure\" --prefix=\"$out\" \\
+          --enable-kernel=5.0 \\
+          --with-headers=$lnxheaders \\
+          --enable-languages=c,c++ \\
+
+        make -j4
+        make install
+    "};
+
+    let driver2 = driver.clone();
+    let store_path2 = store_path.clone();
+    let mut binutils_ = binutils.clone();
+    let mut gcc_ = gcc.clone();
+    let mut kernel_headers_ = kernel_headers.clone();
+    let glibc = Runner::new_wi(&driver, "glibc", async move {
+        let mut src = Runner::new_fetchu(
+            &driver2,
+            "http://ftp.gnu.org/gnu/glibc/glibc-2.34.tar.xz",
+            "731BEx5ziNAm0RC2CbGB5Qut2nLN_Lipp_SggSNR9WQ",
+            "",
+            false,
+        );
+        Ok(WorkItem {
+            envs: mk_envs(vec![
+            (
+                "src",
+                format!("{}/{}", store_path2, src.want().await?["out"]),
+            ),
+            (
+                "buildInputs",
+                [
+                    binutils_.want().await?["out"],
+                    gcc_.want().await?["out"],
+                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
+            ),
+            (
+                "lnxheaders",
+                format!("{}/{}", store_path2, kernel_headers_.want().await?["out"]),
+            )
+            ]),
+            args: vec![
+                format!("{}/{}", store_path2, buildsh),
+                "/build/build.sh".to_string(),
+            ],
+            outputs: mk_outputs(vec!["out"]),
+            files: mk_envfiles(vec![
+                (
+                    "build.sh",
+                    Dump::Regular {
+                        executable: true,
+                        contents: glibc_script.to_string().into_bytes(),
+                    },
+                ),
+            ]),
+        })
+    });
+
+    /*
+    let driver2 = driver.clone();
+    let store_path2 = store_path.clone();
+    let mut binutils_ = binutils.clone();
+    let mut gcc_ = gcc.clone();
+    let perl = Runner::new_wi(&driver, "perl", async move {
+        let mut src = Runner::new_fetchu(
+            &driver2,
+            "https://www.cpan.org/src/5.0/perl-5.34.1.tar.gz",
+            "B7Y8Fp6JaYxNBStTLlc5oiQaJDAAcBGPpr9lSP5lOpo",
+            "",
+            false,
+        );
+        Ok(WorkItem {
+            envs: mk_envs(vec![
+            (
+                "src",
+                format!("{}/{}", store_path2, src.want().await?["out"]),
+            ),
+            (
+                "buildInputs",
+                [
+                    binutils_.want().await?["out"],
+                    gcc_.want().await?["out"],
+                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
+            )
+            ]),
+            args: vec![
+                format!("{}/{}", store_path2, buildsh),
+                "/build/build.sh".to_string(),
+            ],
+            outputs: mk_outputs(vec!["out"]),
+            files: mk_envfiles(vec![
+                (
+                    "build.sh",
+                    Dump::Regular {
+                        executable: true,
+                        contents: gcc_script.to_string().into_bytes(),
+                    },
+                ),
+            ]),
+        })
+    });
+    */
+
     let kernel_headers = match kernel_headers.clone().want().await {
         Ok(outs) => outs["out"],
         _ => anyhow::bail!("unable to build kernel headers"),
