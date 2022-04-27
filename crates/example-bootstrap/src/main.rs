@@ -69,6 +69,18 @@ async fn fetchurl(
     Ok(h)
 }
 
+async fn fetchurl_wrapped(
+    driver: &Driver,
+    url: &str,
+    expect_hash: &str,
+    with_path: &str,
+    executable: bool,
+) -> Result<StoreHash, ()> {
+    fetchurl(driver, url, expect_hash, with_path, executable).await.map_err(|e| {
+        error!("{} => {:?}", url, e);
+    })
+}
+
 fn mk_envs(elems: Vec<(&str, String)>) -> BTreeMap<String, String> {
     elems.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
 }
@@ -286,7 +298,7 @@ async fn main() -> anyhow::Result<()> {
         &driver,
         Dump::Regular {
             executable: true,
-            contents: include_str!("mkDerivation-builder.sh")
+            contents: include_str!("stage1/mkDerivation-builder.sh")
                 .replace(
                     "@bootstrapTools@",
                     &format!("{}/{}", store_path, bootstrap_tools),
@@ -353,7 +365,7 @@ async fn main() -> anyhow::Result<()> {
     let driver2 = driver.clone();
     let store_path2 = store_path.clone();
     let binutils = Runner::new_wi(&driver, "binutils", async move {
-        let mut src = Runner::new_fetchu(
+        let src = fetchurl_wrapped(
             &driver2,
             //"http://ftp.gnu.org/gnu/binutils/binutils-2.38.tar.xz",
             //"dWdbr5ALD_NFkb2GxUznkedusXS9uMaTLdcYarsxt7M",
@@ -362,7 +374,7 @@ async fn main() -> anyhow::Result<()> {
             "",
             false,
         );
-        let mut asrp = Runner::new_fetchu(
+        let asrp = fetchurl_wrapped(
             &driver2,
             "https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/development/tools/misc/binutils/always-search-rpath.patch",
             "ZSPPSmFnykfdxs7m2K0TZFRgSg5vdktZpbsJ9_5V0qc",
@@ -372,7 +384,7 @@ async fn main() -> anyhow::Result<()> {
         Ok(WorkItem {
             envs: mk_envs(vec![(
                 "src",
-                format!("{}/{}", store_path2, src.want().await?["out"]),
+                format!("{}/{}", store_path2, src.await?),
             )]),
             args: vec![
                 format!("{}/{}", store_path2, buildsh),
@@ -391,7 +403,7 @@ async fn main() -> anyhow::Result<()> {
                     "patches",
                     Dump::Regular {
                         executable: false,
-                        contents: vec![asrp.want().await?["out"]]
+                        contents: vec![asrp.await?]
                             .into_iter()
                             .map(|i| format!("{}/{}\n", store_path2, i))
                             .collect::<Vec<_>>()
@@ -424,7 +436,7 @@ async fn main() -> anyhow::Result<()> {
     let driver2 = driver.clone();
     let store_path2 = store_path.clone();
     let gnum4 = Runner::new_wi(&driver, "gnum4", async move {
-        let mut src = Runner::new_fetchu(
+        let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/m4/m4-1.4.19.tar.xz",
             "i0KjpKfM4RbyXz26vY41jdKIh6jpczykXCcw1_9hzxw",
@@ -434,7 +446,7 @@ async fn main() -> anyhow::Result<()> {
         Ok(WorkItem {
             envs: mk_envs(vec![(
                 "src",
-                format!("{}/{}", store_path2, src.want().await?["out"]),
+                format!("{}/{}", store_path2, src.await?),
             )]),
             args: vec![
                 format!("{}/{}", store_path2, buildsh),
@@ -449,7 +461,7 @@ async fn main() -> anyhow::Result<()> {
     let store_path2 = store_path.clone();
     let mut gnum4_ = gnum4.clone();
     let gmp = Runner::new_wi(&driver, "gmp", async move {
-        let mut src = Runner::new_fetchu(
+        let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.xz",
             "BN+S1KcfEM_ZyazWQAwkutnISAcxQmcYhhEqRyDw5wo",
@@ -460,7 +472,7 @@ async fn main() -> anyhow::Result<()> {
             envs: mk_envs(vec![
             (
                 "src",
-                format!("{}/{}", store_path2, src.want().await?["out"]),
+                format!("{}/{}", store_path2, src.await?),
             ),
             (
                 "buildInputs",
@@ -482,7 +494,7 @@ async fn main() -> anyhow::Result<()> {
     let store_path2 = store_path.clone();
     let mut gmp_ = gmp.clone();
     let mpfr = Runner::new_wi(&driver, "mpfr", async move {
-        let mut src = Runner::new_fetchu(
+        let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/mpfr/mpfr-4.1.0.tar.xz",
             "I0xvlGlSGYy8EdaENBtjFJjiaYuaRw8FB5VWp5d4eJY",
@@ -493,7 +505,7 @@ async fn main() -> anyhow::Result<()> {
             envs: mk_envs(vec![
             (
                 "src",
-                format!("{}/{}", store_path2, src.want().await?["out"]),
+                format!("{}/{}", store_path2, src.await?),
             ),
             (
                 "buildInputs",
@@ -516,7 +528,7 @@ async fn main() -> anyhow::Result<()> {
     let mut gmp_ = gmp.clone();
     let mut mpfr_ = mpfr.clone();
     let mpc = Runner::new_wi(&driver, "mpc", async move {
-        let mut src = Runner::new_fetchu(
+        let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/mpc/mpc-1.2.1.tar.gz",
             "OBypmXEnvXlpemFyE3vYcCRTOY9gKchO9ePiBhw5Qhk",
@@ -527,7 +539,7 @@ async fn main() -> anyhow::Result<()> {
             envs: mk_envs(vec![
             (
                 "src",
-                format!("{}/{}", store_path2, src.want().await?["out"]),
+                format!("{}/{}", store_path2, src.await?),
             ),
             (
                 "buildInputs",
@@ -585,7 +597,7 @@ async fn main() -> anyhow::Result<()> {
     let mut mpfr_ = mpfr.clone();
     let mut mpc_ = mpc.clone();
     let gcc = Runner::new_wi(&driver, "gcc", async move {
-        let mut src = Runner::new_fetchu(
+        let src = fetchurl_wrapped(
             &driver2,
             //"http://ftp.gnu.org/gnu/gcc/gcc-11.2.0/gcc-11.2.0.tar.gz",
             //"h3awRfXxv4uVCAML3UDhppwVtM2pvXqYJr9S+6PCaFA",
@@ -598,7 +610,7 @@ async fn main() -> anyhow::Result<()> {
             envs: mk_envs(vec![
             (
                 "src",
-                format!("{}/{}", store_path2, src.want().await?["out"]),
+                format!("{}/{}", store_path2, src.await?),
             ),
             (
                 "buildInputs",
@@ -627,16 +639,27 @@ async fn main() -> anyhow::Result<()> {
         })
     });
 
-    let glibc_script = indoc! {"
+    let binutils = match binutils.clone().want().await {
+        Ok(outs) => outs["out"],
+        _ => anyhow::bail!("unable to build binutils"),
+    };
+
+    let gcc = match gcc.clone().want().await {
+        Ok(outs) => outs["out"],
+        _ => anyhow::bail!("unable to build gcc"),
+    };
+
+    let perl_script = indoc! {"
         set -xe
-        sed -e '/m64=/s/lib64/lib/' -i.orig gcc/config/i386/t-linux64
-        cd ..
-        mkdir build
-        cd build
-        \"../$sourceRoot/configure\" --prefix=\"$out\" \\
-          --enable-kernel=5.0 \\
-          --with-headers=$lnxheaders \\
-          --enable-languages=c,c++ \\
+        sh Configure -des                                    \\
+            -Dprefix=\"$out\"                                \\
+            -Dvendorprefix=\"$out\"                          \\
+            -Dprivlib=\"$out\"/lib/perl5/5.34/core_perl      \\
+            -Darchlib=\"$out\"/lib/perl5/5.34/core_perl      \\
+            -Dsitelib=\"$out\"/lib/perl5/5.34/site_perl      \\
+            -Dsitearch=\"$out\"/lib/perl5/5.34/site_perl     \\
+            -Dvendorlib=\"$out\"/lib/perl5/5.34/vendor_perl  \\
+            -Dvendorarch=\"$out\"/lib/perl5/5.34/vendor_perl
 
         make -j4
         make install
@@ -644,59 +667,8 @@ async fn main() -> anyhow::Result<()> {
 
     let driver2 = driver.clone();
     let store_path2 = store_path.clone();
-    let mut binutils_ = binutils.clone();
-    let mut gcc_ = gcc.clone();
-    let mut kernel_headers_ = kernel_headers.clone();
-    let glibc = Runner::new_wi(&driver, "glibc", async move {
-        let mut src = Runner::new_fetchu(
-            &driver2,
-            "http://ftp.gnu.org/gnu/glibc/glibc-2.34.tar.xz",
-            "731BEx5ziNAm0RC2CbGB5Qut2nLN_Lipp_SggSNR9WQ",
-            "",
-            false,
-        );
-        Ok(WorkItem {
-            envs: mk_envs(vec![
-            (
-                "src",
-                format!("{}/{}", store_path2, src.want().await?["out"]),
-            ),
-            (
-                "buildInputs",
-                [
-                    binutils_.want().await?["out"],
-                    gcc_.want().await?["out"],
-                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
-            ),
-            (
-                "lnxheaders",
-                format!("{}/{}", store_path2, kernel_headers_.want().await?["out"]),
-            )
-            ]),
-            args: vec![
-                format!("{}/{}", store_path2, buildsh),
-                "/build/build.sh".to_string(),
-            ],
-            outputs: mk_outputs(vec!["out"]),
-            files: mk_envfiles(vec![
-                (
-                    "build.sh",
-                    Dump::Regular {
-                        executable: true,
-                        contents: glibc_script.to_string().into_bytes(),
-                    },
-                ),
-            ]),
-        })
-    });
-
-    /*
-    let driver2 = driver.clone();
-    let store_path2 = store_path.clone();
-    let mut binutils_ = binutils.clone();
-    let mut gcc_ = gcc.clone();
     let perl = Runner::new_wi(&driver, "perl", async move {
-        let mut src = Runner::new_fetchu(
+        let src = fetchurl_wrapped(
             &driver2,
             "https://www.cpan.org/src/5.0/perl-5.34.1.tar.gz",
             "B7Y8Fp6JaYxNBStTLlc5oiQaJDAAcBGPpr9lSP5lOpo",
@@ -707,13 +679,12 @@ async fn main() -> anyhow::Result<()> {
             envs: mk_envs(vec![
             (
                 "src",
-                format!("{}/{}", store_path2, src.want().await?["out"]),
+                format!("{}/{}", store_path2, src.await?),
             ),
             (
                 "buildInputs",
                 [
-                    binutils_.want().await?["out"],
-                    gcc_.want().await?["out"],
+                    binutils,
                 ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
             )
             ]),
@@ -727,27 +698,264 @@ async fn main() -> anyhow::Result<()> {
                     "build.sh",
                     Dump::Regular {
                         executable: true,
-                        contents: gcc_script.to_string().into_bytes(),
+                        contents: perl_script.to_string().into_bytes(),
                     },
                 ),
             ]),
         })
     });
-    */
 
-    let kernel_headers = match kernel_headers.clone().want().await {
+    let driver2 = driver.clone();
+    let store_path2 = store_path.clone();
+    let mut gnum4_ = gnum4.clone();
+    let mut perl_ = perl.clone();
+    let bison = Runner::new_wi(&driver, "bison", async move {
+        let src = fetchurl_wrapped(
+            &driver2,
+            "http://ftp.gnu.org/gnu/bison/bison-3.8.2.tar.gz",
+            "QP0sQXBOzt_AlrvUN6NCBuwyk9KSwug8djD6AbAX3Rs",
+            "",
+            false,
+        );
+        Ok(WorkItem {
+            envs: mk_envs(vec![
+            (
+                "src",
+                format!("{}/{}", store_path2, src.await?),
+            ),
+            (
+                "buildInputs",
+                [
+                    binutils,
+                    gnum4_.want().await?["out"],
+                    perl_.want().await?["out"],
+                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
+            )
+            ]),
+            args: vec![
+                format!("{}/{}", store_path2, buildsh),
+                "/build/build.sh".to_string(),
+            ],
+            outputs: mk_outputs(vec!["out"]),
+            files: mk_envfiles(vec![
+                (
+                    "build.sh",
+                    Dump::Regular {
+                        executable: true,
+                        contents: indoc! {"
+                            set -xe
+                            if ! ./configure --prefix=\"$out\"; then
+                              ls -las config.log
+                              echo \"BEGIN config.log\"
+                              type cat
+                              cat config.log || true
+                              echo \"END config.log\"
+                              exit 1
+                            fi
+                            make -j4
+                            make install
+                        "}.to_string().into_bytes(),
+                    },
+                ),
+            ]),
+        })
+    });
+
+    let driver2 = driver.clone();
+    let store_path2 = store_path.clone();
+    let python3 = Runner::new_wi(&driver, "python3.10", async move {
+        let src = fetchurl_wrapped(
+            &driver2,
+            "https://www.python.org/ftp/python/3.10.4/Python-3.10.4.tar.xz",
+            "6Di_C2g+y4lPVFZqBRpXCxy72RVETQrzZO3DNkKeNOY",
+            "",
+            false,
+        );
+        let no_ldconfig = fetchurl_wrapped(
+            &driver2,
+            "https://raw.githubusercontent.com/NixOS/nixpkgs/9fc849704f9cb8baba7b3a30cceac00a448d9a53/pkgs/development/interpreters/python/cpython/3.10/no-ldconfig.patch",
+            "x77POldOugPGqVp_LemeMH2xfclFeN47Rz_33LA64wE",
+            "",
+            false,
+        );
+        Ok(WorkItem {
+            envs: mk_envs(vec![
+            (
+                "src",
+                format!("{}/{}", store_path2, src.await?),
+            ),
+            (
+                "buildInputs",
+                [
+                    binutils,
+                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
+            ),
+            ("LIBS", "-lcrypt".to_string()),
+            ("PYTHONHASHSEED", "0".to_string()),
+            ("CFLAGS_NODIST", "-fno-semantic-interposition".to_string()),
+            ]),
+            args: vec![
+                format!("{}/{}", store_path2, buildsh),
+                "/build/build.sh".to_string(),
+            ],
+            outputs: mk_outputs(vec!["out"]),
+            files: mk_envfiles(vec![
+                (
+                    "patches",
+                    Dump::Directory(std::iter::once((
+                        "no-ldconfig.patch".to_string().try_into().unwrap(),
+                        Dump::SymLink {
+                            target: format!("{}/{}", store_path2, no_ldconfig.await?).into(),
+                        },
+                    )).collect()),
+                ),
+                (
+                    "build.sh",
+                    Dump::Regular {
+                        executable: true,
+                        contents: indoc! {"
+                            set -xe
+                            NIX_WRAPPER_gcc_ARGS=\"$NIX_WRAPPER_gcc_ARGS -lgcc_s\"
+                            NIX_WRAPPER_gxx_ARGS=\"$NIX_WRAPPER_gxx_ARGS -lgcc_s\"
+                            export NIX_WRAPPER_gcc_ARGS NIX_WRAPPER_gxx_ARGS
+                            ls -las
+                            ./configure --prefix=\"$out\" \\
+                                --enable-shared \\
+                                --without-ensurepip \\
+                                ac_cv_func_lchmod=no \\
+
+                            make -j4
+                            make install
+                            # needed for some packages, especially packages that backport functionality
+                            # to 2.x from 3.x
+                            for item in $out/lib/${libPrefix}/test/*; do
+                              if [[ \"$item\" != */test_support.py*
+                                 && \"$item\" != */test/support
+                                 && \"$item\" != */test/libregrtest
+                                 && \"$item\" != */test/regrtest.py* ]]; then
+                                rm -rf \"$item\"
+                              else
+                                echo $item
+                              fi
+                            done
+                            touch $out/lib/${libPrefix}/test/__init__.py
+
+                            ln -s ${libPrefix}m $out/include/${libPrefix}
+
+                            # Determinism: Windows installers were not deterministic.
+                            # We're also not interested in building Windows installers.
+                            find \"$out\" -name 'wininst*.exe' | xargs -r rm -f
+
+                            # Use Python3 as default python
+                            ln -s idle3 \"$out/bin/idle\"
+                            ln -s pydoc3 \"$out/bin/pydoc\"
+                            ln -s python3 \"$out/bin/python\"
+                            ln -s python3-config \"$out/bin/python-config\"
+                            ln -s python3.pc \"$out/lib/pkgconfig/python.pc\"
+                            # Get rid of retained dependencies on -dev packages, and remove
+                            # some $TMPDIR references to improve binary reproducibility.
+                            # Note that the .pyc file of _sysconfigdata.py should be regenerated!
+                            for i in $out/lib/${libPrefix}/_sysconfigdata*.py $out/lib/${libPrefix}/config-3.10*/Makefile; do
+                               sed -i $i -e \"s|/tmp|/no-such-path|g\"
+                            done
+
+                            strip -S $out/lib/${libPrefix}/config-*/libpython*.a || true
+                            rm -fR $out/bin/python*-config $out/lib/python*/config-*
+                            rm -fR $out/bin/idle* $out/lib/python*/{idlelib,turtledemo}
+                            rm -fR $out/lib/python*/tkinter
+                            rm -fR $out/lib/python*/test $out/lib/python*/**/test{,s}
+                            find $out -type d -name __pycache__ -print0 | xargs -0 -I {} rm -rf \"{}\"
+                            mkdir -p $out/share/gdb
+                            sed '/^#!/d' Tools/gdb/libpython.py > $out/share/gdb/libpython.py
+                        "}.to_string().replace("${libPrefix}", "python3.10").into_bytes(),
+                    },
+                ),
+            ]),
+        })
+    });
+
+    let buildscript_glibc = smart_upload(
+        &driver,
+        Dump::Regular {
+            executable: true,
+            contents: include_str!("stage1/buildscript-glibc.sh")
+                .replace(
+                    "@bootstrapTools@",
+                    &format!("{}/{}", store_path, bootstrap_tools),
+                )
+                .into_bytes(),
+        },
+        "buildscript-glibc.sh",
+    )
+    .await?;
+
+    let driver2 = driver.clone();
+    let store_path2 = store_path.clone();
+    let mut bison_ = bison.clone();
+    let mut python3_ = python3.clone();
+    let mut kernel_headers_ = kernel_headers.clone();
+    let glibc = Runner::new_wi(&driver, "glibc", async move {
+        let src = fetchurl_wrapped(
+            &driver2,
+            "http://ftp.gnu.org/gnu/glibc/glibc-2.34.tar.xz",
+            "731BEx5ziNAm0RC2CbGB5Qut2nLN_Lipp_SggSNR9WQ",
+            "",
+            false,
+        );
+        Ok(WorkItem {
+            envs: mk_envs(vec![
+            (
+                "src",
+                format!("{}/{}", store_path2, src.await?),
+            ),
+            (
+                "gcc",
+                format!("{}/{}", store_path2, gcc),
+            ),
+            (
+                "buildInputs",
+                [
+                    binutils,
+                    bison_.want().await?["out"],
+                    python3_.want().await?["out"],
+                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
+            ),
+            (
+                "lnxheaders",
+                format!("{}/{}", store_path2, kernel_headers_.want().await?["out"]),
+            )
+            ]),
+            args: vec![
+                format!("{}/{}", store_path2, buildscript_glibc),
+            ],
+            outputs: mk_outputs(vec!["out"]),
+            files: mk_envfiles(vec![]),
+        })
+    });
+
+    let _kernel_headers = match kernel_headers.clone().want().await {
         Ok(outs) => outs["out"],
         _ => anyhow::bail!("unable to build kernel headers"),
     };
 
-    let binutils = match binutils.clone().want().await {
+    let _perl = match perl.clone().want().await {
         Ok(outs) => outs["out"],
-        _ => anyhow::bail!("unable to build binutils"),
+        _ => anyhow::bail!("unable to build perl"),
     };
 
-    let gcc = match gcc.clone().want().await {
+    let _bison = match bison.clone().want().await {
         Ok(outs) => outs["out"],
-        _ => anyhow::bail!("unable to build gcc"),
+        _ => anyhow::bail!("unable to build bison"),
+    };
+
+    let _python3 = match python3.clone().want().await {
+        Ok(outs) => outs["out"],
+        _ => anyhow::bail!("unable to build python3"),
+    };
+
+    let _glibc = match glibc.clone().want().await {
+        Ok(outs) => outs["out"],
+        _ => anyhow::bail!("unable to build glibc"),
     };
 
     Ok(())

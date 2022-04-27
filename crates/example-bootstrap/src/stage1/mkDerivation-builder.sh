@@ -56,7 +56,7 @@ for path in @bootstrapTools@/include-glibc \
   NIX_WRAPPER_gcc_ARGS="$NIX_WRAPPER_gcc_ARGS -idirafter $path"
 done
 
-NIX_WRAPPER_gcc_ARGS="$NIX_WRAPPER_gcc_ARGS -Wl,--rpath=@bootstrapTools@/lib -I @bootstrapTools@/include"
+NIX_WRAPPER_gcc_ARGS="$NIX_WRAPPER_gcc_ARGS -Wl,--rpath=@bootstrapTools@/lib -I @bootstrapTools@/include -Wl,--rpath=$out/lib"
 PATH="$PATH:@wrappers@/bin:@bootstrapTools@/bin"
 
 NIX_WRAPPER_gxx_ARGS="$NIX_WRAPPER_gcc_ARGS"
@@ -91,6 +91,11 @@ if ! [ -d "$src" ]; then
       echo "Applying patch $path ..."
       patch -p1 "$path"
     done < ../patches
+  elif [ -d ../patches ]; then
+    for path in ../patches/*; do
+      echo "Applying patch $path ..."
+      patch -p1 "$path"
+    done
   fi
 else
   cd "$src"
@@ -102,5 +107,6 @@ env
 
 for path in $(find "$out/bin" "$out/lib" -type f -executable); do
   echo Shrinking RPATH of "$path"
+  chmod +w "$path" || true
   patchelf --shrink-rpath "$path" || true
 done
