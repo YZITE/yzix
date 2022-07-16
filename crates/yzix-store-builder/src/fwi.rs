@@ -38,8 +38,7 @@ mod tests {
             args: vec![
                 "/yzix_s/4Zx1PBoft1YyAuKdhjAY1seZFHloxQ+8voHQRkRMuys/bin/whoops".to_string(),
             ],
-            envs: Default::default(),
-            outputs: Default::default(),
+            ..Default::default()
         };
         let fwi = FullWorkItem::new(a, "/yzix_s".into());
         assert_eq!(
