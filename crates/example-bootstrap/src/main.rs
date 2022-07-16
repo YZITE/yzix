@@ -76,9 +76,11 @@ async fn fetchurl_wrapped(
     with_path: &str,
     executable: bool,
 ) -> Result<StoreHash, ()> {
-    fetchurl(driver, url, expect_hash, with_path, executable).await.map_err(|e| {
-        error!("{} => {:?}", url, e);
-    })
+    fetchurl(driver, url, expect_hash, with_path, executable)
+        .await
+        .map_err(|e| {
+            error!("{} => {:?}", url, e);
+        })
 }
 
 fn mk_envs(elems: Vec<(&str, String)>) -> BTreeMap<String, String> {
@@ -382,10 +384,7 @@ async fn main() -> anyhow::Result<()> {
             true,
         );
         Ok(WorkItem {
-            envs: mk_envs(vec![(
-                "src",
-                format!("{}/{}", store_path2, src.await?),
-            )]),
+            envs: mk_envs(vec![("src", format!("{}/{}", store_path2, src.await?))]),
             args: vec![
                 format!("{}/{}", store_path2, buildsh),
                 "/build/build.sh".to_string(),
@@ -427,7 +426,9 @@ async fn main() -> anyhow::Result<()> {
                 \"../$sourceRoot/configure\" --prefix=\"$out\"
                 make
                 make install
-            "}.to_string().into_bytes(),
+            "}
+            .to_string()
+            .into_bytes(),
         },
         "gnu-generic-script",
     )
@@ -444,10 +445,7 @@ async fn main() -> anyhow::Result<()> {
             false,
         );
         Ok(WorkItem {
-            envs: mk_envs(vec![(
-                "src",
-                format!("{}/{}", store_path2, src.await?),
-            )]),
+            envs: mk_envs(vec![("src", format!("{}/{}", store_path2, src.await?))]),
             args: vec![
                 format!("{}/{}", store_path2, buildsh),
                 format!("{}/{}", store_path2, h_gnu_generic_script),
@@ -470,16 +468,15 @@ async fn main() -> anyhow::Result<()> {
         );
         Ok(WorkItem {
             envs: mk_envs(vec![
-            (
-                "src",
-                format!("{}/{}", store_path2, src.await?),
-            ),
-            (
-                "buildInputs",
-                [
-                    gnum4_.want().await?["out"],
-                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
-            )
+                ("src", format!("{}/{}", store_path2, src.await?)),
+                (
+                    "buildInputs",
+                    [gnum4_.want().await?["out"]]
+                        .into_iter()
+                        .map(|i| format!("{}/{}", store_path2, i))
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                ),
             ]),
             args: vec![
                 format!("{}/{}", store_path2, buildsh),
@@ -503,16 +500,15 @@ async fn main() -> anyhow::Result<()> {
         );
         Ok(WorkItem {
             envs: mk_envs(vec![
-            (
-                "src",
-                format!("{}/{}", store_path2, src.await?),
-            ),
-            (
-                "buildInputs",
-                [
-                    gmp_.want().await?["out"],
-                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
-            )
+                ("src", format!("{}/{}", store_path2, src.await?)),
+                (
+                    "buildInputs",
+                    [gmp_.want().await?["out"]]
+                        .into_iter()
+                        .map(|i| format!("{}/{}", store_path2, i))
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                ),
             ]),
             args: vec![
                 format!("{}/{}", store_path2, buildsh),
@@ -537,17 +533,15 @@ async fn main() -> anyhow::Result<()> {
         );
         Ok(WorkItem {
             envs: mk_envs(vec![
-            (
-                "src",
-                format!("{}/{}", store_path2, src.await?),
-            ),
-            (
-                "buildInputs",
-                [
-                    gmp_.want().await?["out"],
-                    mpfr_.want().await?["out"],
-                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
-            )
+                ("src", format!("{}/{}", store_path2, src.await?)),
+                (
+                    "buildInputs",
+                    [gmp_.want().await?["out"], mpfr_.want().await?["out"]]
+                        .into_iter()
+                        .map(|i| format!("{}/{}", store_path2, i))
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                ),
             ]),
             args: vec![
                 format!("{}/{}", store_path2, buildsh),
@@ -608,34 +602,33 @@ async fn main() -> anyhow::Result<()> {
         );
         Ok(WorkItem {
             envs: mk_envs(vec![
-            (
-                "src",
-                format!("{}/{}", store_path2, src.await?),
-            ),
-            (
-                "buildInputs",
-                [
-                    binutils_.want().await?["out"],
-                    gmp_.want().await?["out"],
-                    mpfr_.want().await?["out"],
-                    mpc_.want().await?["out"],
-                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
-            )
+                ("src", format!("{}/{}", store_path2, src.await?)),
+                (
+                    "buildInputs",
+                    [
+                        binutils_.want().await?["out"],
+                        gmp_.want().await?["out"],
+                        mpfr_.want().await?["out"],
+                        mpc_.want().await?["out"],
+                    ]
+                    .into_iter()
+                    .map(|i| format!("{}/{}", store_path2, i))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                ),
             ]),
             args: vec![
                 format!("{}/{}", store_path2, buildsh),
                 "/build/build.sh".to_string(),
             ],
             outputs: mk_outputs(vec!["out"]),
-            files: mk_envfiles(vec![
-                (
-                    "build.sh",
-                    Dump::Regular {
-                        executable: true,
-                        contents: gcc_script.to_string().into_bytes(),
-                    },
-                ),
-            ]),
+            files: mk_envfiles(vec![(
+                "build.sh",
+                Dump::Regular {
+                    executable: true,
+                    contents: gcc_script.to_string().into_bytes(),
+                },
+            )]),
         })
     });
 
@@ -677,31 +670,28 @@ async fn main() -> anyhow::Result<()> {
         );
         Ok(WorkItem {
             envs: mk_envs(vec![
-            (
-                "src",
-                format!("{}/{}", store_path2, src.await?),
-            ),
-            (
-                "buildInputs",
-                [
-                    binutils,
-                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
-            )
+                ("src", format!("{}/{}", store_path2, src.await?)),
+                (
+                    "buildInputs",
+                    [binutils]
+                        .into_iter()
+                        .map(|i| format!("{}/{}", store_path2, i))
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                ),
             ]),
             args: vec![
                 format!("{}/{}", store_path2, buildsh),
                 "/build/build.sh".to_string(),
             ],
             outputs: mk_outputs(vec!["out"]),
-            files: mk_envfiles(vec![
-                (
-                    "build.sh",
-                    Dump::Regular {
-                        executable: true,
-                        contents: perl_script.to_string().into_bytes(),
-                    },
-                ),
-            ]),
+            files: mk_envfiles(vec![(
+                "build.sh",
+                Dump::Regular {
+                    executable: true,
+                    contents: perl_script.to_string().into_bytes(),
+                },
+            )]),
         })
     });
 
@@ -719,30 +709,30 @@ async fn main() -> anyhow::Result<()> {
         );
         Ok(WorkItem {
             envs: mk_envs(vec![
-            (
-                "src",
-                format!("{}/{}", store_path2, src.await?),
-            ),
-            (
-                "buildInputs",
-                [
-                    binutils,
-                    gnum4_.want().await?["out"],
-                    perl_.want().await?["out"],
-                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
-            )
+                ("src", format!("{}/{}", store_path2, src.await?)),
+                (
+                    "buildInputs",
+                    [
+                        binutils,
+                        gnum4_.want().await?["out"],
+                        perl_.want().await?["out"],
+                    ]
+                    .into_iter()
+                    .map(|i| format!("{}/{}", store_path2, i))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                ),
             ]),
             args: vec![
                 format!("{}/{}", store_path2, buildsh),
                 "/build/build.sh".to_string(),
             ],
             outputs: mk_outputs(vec!["out"]),
-            files: mk_envfiles(vec![
-                (
-                    "build.sh",
-                    Dump::Regular {
-                        executable: true,
-                        contents: indoc! {"
+            files: mk_envfiles(vec![(
+                "build.sh",
+                Dump::Regular {
+                    executable: true,
+                    contents: indoc! {"
                             set -xe
                             if ! ./configure --prefix=\"$out\"; then
                               ls -las config.log
@@ -754,10 +744,11 @@ async fn main() -> anyhow::Result<()> {
                             fi
                             make -j4
                             make install
-                        "}.to_string().into_bytes(),
-                    },
-                ),
-            ]),
+                        "}
+                    .to_string()
+                    .into_bytes(),
+                },
+            )]),
         })
     });
 
@@ -904,30 +895,26 @@ async fn main() -> anyhow::Result<()> {
         );
         Ok(WorkItem {
             envs: mk_envs(vec![
-            (
-                "src",
-                format!("{}/{}", store_path2, src.await?),
-            ),
-            (
-                "gcc",
-                format!("{}/{}", store_path2, gcc),
-            ),
-            (
-                "buildInputs",
-                [
-                    binutils,
-                    bison_.want().await?["out"],
-                    python3_.want().await?["out"],
-                ].into_iter().map(|i| format!("{}/{}", store_path2, i)).collect::<Vec<_>>().join(" "),
-            ),
-            (
-                "lnxheaders",
-                format!("{}/{}", store_path2, kernel_headers_.want().await?["out"]),
-            )
+                ("src", format!("{}/{}", store_path2, src.await?)),
+                ("gcc", format!("{}/{}", store_path2, gcc)),
+                (
+                    "buildInputs",
+                    [
+                        binutils,
+                        bison_.want().await?["out"],
+                        python3_.want().await?["out"],
+                    ]
+                    .into_iter()
+                    .map(|i| format!("{}/{}", store_path2, i))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                ),
+                (
+                    "lnxheaders",
+                    format!("{}/{}", store_path2, kernel_headers_.want().await?["out"]),
+                ),
             ]),
-            args: vec![
-                format!("{}/{}", store_path2, buildscript_glibc),
-            ],
+            args: vec![format!("{}/{}", store_path2, buildscript_glibc)],
             outputs: mk_outputs(vec!["out"]),
             files: mk_envfiles(vec![]),
         })
