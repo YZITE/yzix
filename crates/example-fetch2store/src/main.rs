@@ -1,4 +1,4 @@
-use yzix_client::{stree::Regular, Driver, Dump, StoreHash};
+use yzix_client::{Driver, Dump, Regular, StoreHash};
 
 #[derive(Debug, clap::Parser)]
 struct Args {

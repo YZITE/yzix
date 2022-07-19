@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use tracing::{error, info};
 use yzix_client::{
-    stree::Regular, Driver, Dump, OutputName, StoreHash, TaskBoundResponse as Tbr, WorkItem,
+    Driver, Dump, OutputName, Regular, StoreHash, TaskBoundResponse as Tbr, WorkItem,
 };
 
 async fn my_fetch(url: &str) -> Result<Vec<u8>, reqwest::Error> {

@@ -15,7 +15,13 @@ pub use wi::WorkItem;
 mod dump;
 pub use dump::{Dump, Flags as DumpFlags};
 
-pub mod stree;
+mod regular;
+pub use regular::{Flags as RegularFlags, Regular};
+pub mod store_utils;
+mod thintree;
+pub use thintree::ThinTree;
+mod semitree;
+pub use semitree::SemiTree;
 
 mod hash;
 pub use hash::{Hash as StoreHash, TaggedHash};

@@ -147,6 +147,13 @@ impl<T: crate::Serialize> TaggedHash<T> {
     }
 }
 
+impl<T> crate::Serialize for TaggedHash<T> {
+    #[inline(always)]
+    fn serialize<H: crate::SerUpdate>(&self, state: &mut H) {
+        self.inner.0.serialize(state);
+    }
+}
+
 impl<T> core::clone::Clone for TaggedHash<T> {
     #[inline]
     fn clone(&self) -> Self {

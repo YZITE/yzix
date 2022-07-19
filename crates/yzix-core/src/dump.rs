@@ -2,8 +2,10 @@
 // quickly, and the user isn't annoyed that it compiles, but doesn't work at runtime.
 #![cfg(unix)]
 
-use crate::stree::{mk_mapef, mk_reftime, set_perms_to_mode, Regular, RegularFlags};
-use crate::{visit_bytes as yvb, StoreError as Error, StoreErrorKind as ErrorKind};
+use crate::store_utils::{mk_mapef, mk_reftime, set_perms_to_mode};
+use crate::{
+    visit_bytes as yvb, Regular, RegularFlags, StoreError as Error, StoreErrorKind as ErrorKind,
+};
 use camino::Utf8PathBuf;
 use std::{fmt, fs, path::Path};
 
