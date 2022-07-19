@@ -30,3 +30,16 @@ impl Element for String {
         *self = String::from_utf8(bytes).expect("illegal hash characters used");
     }
 }
+
+use camino::Utf8PathBuf;
+
+impl Element for Utf8PathBuf {
+    fn accept<V: Visitor>(&self, visitor: &mut V) {
+        visitor.visit_bytes(self.as_str().as_bytes());
+    }
+    fn accept_mut<V: VisitorMut>(&mut self, visitor: &mut V) {
+        let mut s = String::from(core::mem::replace(self, Utf8PathBuf::from("")));
+        s.accept_mut(visitor);
+        *self = s.into();
+    }
+}

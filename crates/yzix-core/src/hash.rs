@@ -1,7 +1,7 @@
 use base64::engine::fast_portable::{FastPortable, FastPortableConfig};
 use blake2::{digest::consts::U32, Blake2b, Digest as _};
+use core::{cmp, convert, fmt, marker::PhantomData};
 use once_cell::sync::Lazy;
-use std::{convert, fmt};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 pub struct Hash(pub [u8; 32]);
@@ -81,7 +81,6 @@ impl<'de> serde::Deserialize<'de> for Hash {
     where
         D: serde::Deserializer<'de>,
     {
-        use std::marker::PhantomData;
         struct Visitor<'de>(PhantomData<&'de ()>);
         impl<'de> serde::de::Visitor<'de> for Visitor<'de> {
             type Value = Hash;
@@ -121,6 +120,63 @@ impl<'de> serde::Deserialize<'de> for Hash {
         serde::Deserializer::deserialize_newtype_struct(deserializer, "Hash", Visitor(PhantomData))
     }
 }
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(transparent, bound = "")]
+#[repr(transparent)]
+pub struct TaggedHash<T> {
+    inner: Hash,
+    #[serde(default, skip_serializing)]
+    _phantom: PhantomData<*const T>,
+}
+
+impl<T> convert::AsRef<Hash> for TaggedHash<T> {
+    #[inline(always)]
+    fn as_ref(&self) -> &Hash {
+        &self.inner
+    }
+}
+
+impl<T: crate::Serialize> TaggedHash<T> {
+    #[inline]
+    pub fn hash_complex(t: &T) -> Self {
+        Self {
+            inner: Hash::hash_complex::<T>(t),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<T> core::clone::Clone for TaggedHash<T> {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner,
+            _phantom: PhantomData,
+        }
+    }
+    #[inline]
+    fn clone_from(&mut self, source: &Self) {
+        self.inner = source.inner;
+    }
+}
+
+impl<T> fmt::Debug for TaggedHash<T> {
+    #[inline(always)]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        <Hash as fmt::Debug>::fmt(&self.inner, f)
+    }
+}
+
+impl<T> cmp::PartialEq for TaggedHash<T> {
+    #[inline]
+    fn eq(&self, oth: &Self) -> bool {
+        self.inner == oth.inner
+    }
+}
+
+impl<T> core::marker::Copy for TaggedHash<T> {}
+impl<T> cmp::Eq for TaggedHash<T> {}
 
 #[cfg(test)]
 mod tests {

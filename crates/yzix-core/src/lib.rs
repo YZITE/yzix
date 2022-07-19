@@ -15,8 +15,10 @@ pub use wi::WorkItem;
 mod dump;
 pub use dump::{Dump, Flags as DumpFlags};
 
+pub mod stree;
+
 mod hash;
-pub use hash::Hash as StoreHash;
+pub use hash::{Hash as StoreHash, TaggedHash};
 
 mod ser_trait;
 pub use ser_trait::{Serialize, Update as SerUpdate};

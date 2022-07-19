@@ -2,7 +2,9 @@ use indoc::indoc;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use tracing::{error, info};
-use yzix_client::{Driver, Dump, OutputName, StoreHash, TaskBoundResponse as Tbr, WorkItem};
+use yzix_client::{
+    stree::Regular, Driver, Dump, OutputName, StoreHash, TaskBoundResponse as Tbr, WorkItem,
+};
 
 async fn my_fetch(url: &str) -> Result<Vec<u8>, reqwest::Error> {
     Ok(reqwest::get(url).await?.bytes().await?.as_ref().to_vec())
@@ -20,10 +22,10 @@ async fn fetchurl_outside_store(
     let contents = my_fetch(url).await?;
     info!("fetching {} ... done", url);
 
-    let mut dump = Dump::Regular {
+    let mut dump = Dump::Regular(Regular {
         executable,
         contents,
-    };
+    });
 
     if !with_path.is_empty() {
         for i in with_path.split('/') {
@@ -120,7 +122,7 @@ async fn gen_wrappers(
     bootstrap_tools: StoreHash,
 ) -> anyhow::Result<StoreHash> {
     fn gen_wrapper(store_path: &str, bootstrap_tools: StoreHash, element: &str) -> Dump {
-        Dump::Regular {
+        Dump::Regular(Regular {
             executable: true,
             contents: format!(
                 "#!{stp}/{bst}/bin/bash\nexec {stp}/{bst}/bin/{elem} $NIX_WRAPPER_{elemshv}_ARGS \"$@\"\n",
@@ -130,7 +132,7 @@ async fn gen_wrappers(
                 elemshv = element.replace("++", "xx"),
             )
             .into_bytes(),
-        }
+        })
     }
 
     let mut dir: BTreeMap<yzix_client::BaseName, _> = ["gcc", "g++"]
@@ -298,7 +300,7 @@ async fn main() -> anyhow::Result<()> {
     // imported from from scratchix
     let buildsh = smart_upload(
         &driver,
-        Dump::Regular {
+        Dump::Regular(Regular {
             executable: true,
             contents: include_str!("stage1/mkDerivation-builder.sh")
                 .replace(
@@ -307,7 +309,7 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .replace("@wrappers@", &format!("{}/{}", store_path, wrappers))
                 .into_bytes(),
-        },
+        }),
         "buildsh",
     )
     .await?;
@@ -346,10 +348,10 @@ async fn main() -> anyhow::Result<()> {
             outputs: mk_outputs(vec!["out"]),
             files: mk_envfiles(vec![(
                 "build.sh",
-                Dump::Regular {
+                Dump::Regular(Regular {
                     executable: true,
                     contents: kernel_headers_script.to_string().into_bytes(),
-                },
+                }),
             )]),
         })
     });
@@ -393,14 +395,14 @@ async fn main() -> anyhow::Result<()> {
             files: mk_envfiles(vec![
                 (
                     "build.sh",
-                    Dump::Regular {
+                    Dump::Regular(Regular {
                         executable: true,
                         contents: binutils_script.to_string().into_bytes(),
-                    },
+                    }),
                 ),
                 (
                     "patches",
-                    Dump::Regular {
+                    Dump::Regular(Regular {
                         executable: false,
                         contents: vec![asrp.await?]
                             .into_iter()
@@ -408,7 +410,7 @@ async fn main() -> anyhow::Result<()> {
                             .collect::<Vec<_>>()
                             .join("")
                             .into_bytes(),
-                    },
+                    }),
                 ),
             ]),
         })
@@ -416,7 +418,7 @@ async fn main() -> anyhow::Result<()> {
 
     let h_gnu_generic_script = smart_upload(
         &driver,
-        Dump::Regular {
+        Dump::Regular(Regular {
             executable: true,
             contents: indoc! {"
                 set -xe
@@ -429,7 +431,7 @@ async fn main() -> anyhow::Result<()> {
             "}
             .to_string()
             .into_bytes(),
-        },
+        }),
         "gnu-generic-script",
     )
     .await?;
@@ -624,10 +626,10 @@ async fn main() -> anyhow::Result<()> {
             outputs: mk_outputs(vec!["out"]),
             files: mk_envfiles(vec![(
                 "build.sh",
-                Dump::Regular {
+                Dump::Regular(Regular {
                     executable: true,
                     contents: gcc_script.to_string().into_bytes(),
-                },
+                }),
             )]),
         })
     });
@@ -687,10 +689,10 @@ async fn main() -> anyhow::Result<()> {
             outputs: mk_outputs(vec!["out"]),
             files: mk_envfiles(vec![(
                 "build.sh",
-                Dump::Regular {
+                Dump::Regular(Regular {
                     executable: true,
                     contents: perl_script.to_string().into_bytes(),
-                },
+                }),
             )]),
         })
     });
@@ -730,7 +732,7 @@ async fn main() -> anyhow::Result<()> {
             outputs: mk_outputs(vec!["out"]),
             files: mk_envfiles(vec![(
                 "build.sh",
-                Dump::Regular {
+                Dump::Regular(Regular {
                     executable: true,
                     contents: indoc! {"
                             set -xe
@@ -747,7 +749,7 @@ async fn main() -> anyhow::Result<()> {
                         "}
                     .to_string()
                     .into_bytes(),
-                },
+                }),
             )]),
         })
     });
@@ -802,7 +804,7 @@ async fn main() -> anyhow::Result<()> {
                 ),
                 (
                     "build.sh",
-                    Dump::Regular {
+                    Dump::Regular(Regular {
                         executable: true,
                         contents: indoc! {"
                             set -xe
@@ -859,7 +861,7 @@ async fn main() -> anyhow::Result<()> {
                             mkdir -p $out/share/gdb
                             sed '/^#!/d' Tools/gdb/libpython.py > $out/share/gdb/libpython.py
                         "}.to_string().replace("${libPrefix}", "python3.10").into_bytes(),
-                    },
+                    }),
                 ),
             ]),
         })
@@ -867,7 +869,7 @@ async fn main() -> anyhow::Result<()> {
 
     let buildscript_glibc = smart_upload(
         &driver,
-        Dump::Regular {
+        Dump::Regular(Regular {
             executable: true,
             contents: include_str!("stage1/buildscript-glibc.sh")
                 .replace(
@@ -875,7 +877,7 @@ async fn main() -> anyhow::Result<()> {
                     &format!("{}/{}", store_path, bootstrap_tools),
                 )
                 .into_bytes(),
-        },
+        }),
         "buildscript-glibc.sh",
     )
     .await?;

@@ -2,8 +2,8 @@
 // quickly, and the user isn't annoyed that it compiles, but doesn't work at runtime.
 #![cfg(unix)]
 
-use super::{StoreError as Error, StoreErrorKind as ErrorKind};
-use crate::visit_bytes as yvb;
+use crate::stree::{mk_mapef, mk_reftime, set_perms_to_mode, Regular, RegularFlags};
+use crate::{visit_bytes as yvb, StoreError as Error, StoreErrorKind as ErrorKind};
 use camino::Utf8PathBuf;
 use std::{fmt, fs, path::Path};
 
@@ -11,7 +11,7 @@ use std::{fmt, fs, path::Path};
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Dump {
-    Regular { executable: bool, contents: Vec<u8> },
+    Regular(Regular),
     SymLink { target: Utf8PathBuf },
     Directory(std::collections::BTreeMap<crate::BaseName, Dump>),
 }
@@ -29,17 +29,9 @@ impl crate::Serialize for Dump {
         "(".serialize(state);
         "type".serialize(state);
         match self {
-            Dump::Regular {
-                executable,
-                contents,
-            } => {
+            Dump::Regular(regu) => {
                 "regular".serialize(state);
-                if *executable {
-                    "executable".serialize(state);
-                    "".serialize(state);
-                }
-                "contents".serialize(state);
-                contents.serialize(state);
+                regu.serialize(state);
             }
             Dump::SymLink { target } => {
                 "symlink".serialize(state);
@@ -66,8 +58,8 @@ impl crate::Serialize for Dump {
 impl yvb::Element for Dump {
     fn accept<V: yvb::Visitor>(&self, visitor: &mut V) {
         match self {
-            Dump::Regular { contents, .. } => visitor.visit_bytes(&contents[..]),
-            Dump::SymLink { target } => visitor.visit_bytes(target.as_str().as_bytes()),
+            Dump::Regular(regu) => regu.accept(visitor),
+            Dump::SymLink { target } => target.accept(visitor),
             Dump::Directory(entries) => {
                 entries.values().for_each(|val| val.accept(visitor));
             }
@@ -75,12 +67,8 @@ impl yvb::Element for Dump {
     }
     fn accept_mut<V: yvb::VisitorMut>(&mut self, visitor: &mut V) {
         match self {
-            Dump::Regular { contents, .. } => visitor.visit_bytes(&mut contents[..]),
-            Dump::SymLink { target } => {
-                let mut s = String::from(std::mem::replace(target, Utf8PathBuf::from("")));
-                s.accept_mut(visitor);
-                *target = s.into();
-            }
+            Dump::Regular(regu) => regu.accept_mut(visitor),
+            Dump::SymLink { target } => target.accept_mut(visitor),
             Dump::Directory(entries) => {
                 entries.values_mut().for_each(|val| val.accept_mut(visitor));
             }
@@ -103,10 +91,7 @@ pub struct Flags {
 
 impl Dump {
     pub fn read_from_path(x: &Path) -> Result<Self, Error> {
-        let mapef = |e: std::io::Error| Error {
-            real_path: x.to_path_buf(),
-            kind: e.into(),
-        };
+        let mapef = mk_mapef(x);
         let meta = fs::symlink_metadata(x).map_err(&mapef)?;
         let ty = meta.file_type();
         Ok(if ty.is_symlink() {
@@ -121,28 +106,16 @@ impl Dump {
             target.shrink_to_fit();
             Dump::SymLink { target }
         } else if ty.is_file() {
-            let mut contents = std::fs::read(x).map_err(&mapef)?;
-            contents.shrink_to_fit();
-            Dump::Regular {
-                executable: std::os::unix::fs::PermissionsExt::mode(&meta.permissions()) & 0o111
-                    != 0,
-                contents,
-            }
+            Dump::Regular(Regular::read_from_path(x, &meta)?)
         } else if ty.is_dir() {
             Dump::Directory(
                 std::fs::read_dir(x)
                     .map_err(&mapef)?
                     .map(|entry| {
                         let entry = entry.map_err(&mapef)?;
-                        let name = entry.file_name().into_string().map_err(|_| Error {
-                            real_path: entry.path(),
-                            kind: ErrorKind::NonUtf8Basename,
-                        })?;
-                        let name: crate::BaseName = name.try_into().map_err(|_| Error {
-                            real_path: entry.path(),
-                            kind: ErrorKind::InvalidBasename,
-                        })?;
-                        let val = Dump::read_from_path(&entry.path())?;
+                        let ep = entry.path();
+                        let name = crate::BaseName::decode_from_path(&ep)?;
+                        let val = Dump::read_from_path(&ep)?;
                         Ok((name, val))
                     })
                     .collect::<Result<_, Error>>()?,
@@ -158,18 +131,9 @@ impl Dump {
     /// we require that the parent directory already exists,
     /// and will override the target path `x` if it already exists.
     pub fn write_to_path(&self, x: &Path, flags: Flags) -> Result<(), Error> {
-        // one second past epoch, necessary for e.g. GNU make to recognize
-        // the dumped files as "oldest"
-        // TODO: when https://github.com/alexcrichton/filetime/pull/75 is merged,
-        //   upgrade `filetime` and make this a global `const` binding.
-        let reftime = filetime::FileTime::from_unix_time(1, 0);
-
+        let reftime = mk_reftime();
+        let mapef = mk_mapef(x);
         use std::io::ErrorKind as IoErrorKind;
-
-        let mapef = |e: std::io::Error| Error {
-            real_path: x.to_path_buf(),
-            kind: e.into(),
-        };
         let mut skip_write = false;
 
         if let Ok(y) = fs::symlink_metadata(x) {
@@ -179,7 +143,7 @@ impl Dump {
                     kind: ErrorKind::OverwriteDeclined,
                 });
             } else if !y.is_dir() {
-                if let Dump::Regular { contents, .. } = self {
+                if let Dump::Regular(Regular { contents, .. }) = self {
                     if fs::read(x)
                         .map(|curcts| &curcts == contents)
                         .unwrap_or(false)
@@ -202,58 +166,14 @@ impl Dump {
         }
 
         match self {
-            Dump::SymLink { target } => {
-                std::os::unix::fs::symlink(&target, x).map_err(&mapef)?;
-            }
-            Dump::Regular {
-                executable,
-                contents,
-            } => {
-                if !skip_write {
-                    fs::write(x, contents).map_err(&mapef)?;
-                }
-
-                // don't make stuff readonly on windows, it makes overwriting files more complex...
-
-                if xattr::SUPPORTED_PLATFORM {
-                    // delete only non-system attributes for now
-                    // see also: https://github.com/NixOS/nix/pull/4765
-                    // e.g. we can't delete attributes like
-                    // - security.selinux
-                    // - system.nfs4_acl
-                    let rem_xattrs = xattr::list(x)
-                        .map_err(&mapef)?
-                        .flat_map(|i| i.into_string().ok())
-                        .filter(|i| !i.starts_with("security.") && !i.starts_with("system."))
-                        .collect::<Vec<_>>();
-                    if !rem_xattrs.is_empty() {
-                        // make the file temporary writable
-                        fs::set_permissions(
-                            x,
-                            std::os::unix::fs::PermissionsExt::from_mode(if *executable {
-                                0o755
-                            } else {
-                                0o644
-                            }),
-                        )
-                        .map_err(&mapef)?;
-
-                        for i in rem_xattrs {
-                            xattr::remove(x, i).map_err(&mapef)?;
-                        }
-                    }
-                }
-
-                let mut permbits = 0o444;
-                if *executable {
-                    permbits |= 0o111;
-                }
-                if !flags.make_readonly {
-                    permbits |= 0o200;
-                }
-                fs::set_permissions(x, std::os::unix::fs::PermissionsExt::from_mode(permbits))
-                    .map_err(&mapef)?;
-            }
+            Dump::SymLink { target } => std::os::unix::fs::symlink(&target, x).map_err(&mapef)?,
+            Dump::Regular(regu) => regu.write_to_path(
+                x,
+                RegularFlags {
+                    skip_write,
+                    make_readonly: flags.make_readonly,
+                },
+            )?,
             Dump::Directory(contents) => {
                 if let Err(e) = fs::create_dir(&x) {
                     if e.kind() == IoErrorKind::AlreadyExists {
@@ -279,11 +199,7 @@ impl Dump {
                                     });
                                 } else {
                                     if !already_writable {
-                                        fs::set_permissions(
-                                            x,
-                                            std::os::unix::fs::PermissionsExt::from_mode(0o755),
-                                        )
-                                        .map_err(&mapef)?;
+                                        set_perms_to_mode(x, 0o755)?;
                                         already_writable = true;
                                     }
                                     if entry.file_type().map_err(&mapef)?.is_dir() {
@@ -297,11 +213,7 @@ impl Dump {
                         }
 
                         if flags.force && !already_writable {
-                            fs::set_permissions(
-                                x,
-                                std::os::unix::fs::PermissionsExt::from_mode(0o755),
-                            )
-                            .map_err(&mapef)?;
+                            set_perms_to_mode(x, 0o755)?;
                         }
                     } else {
                         return Err(mapef(e));
@@ -309,12 +221,6 @@ impl Dump {
                 }
                 let mut xs = x.to_path_buf();
                 for (name, val) in contents {
-                    if name.is_empty() {
-                        return Err(Error {
-                            real_path: x.to_path_buf(),
-                            kind: ErrorKind::InvalidBasename,
-                        });
-                    }
                     xs.push(name);
                     // this call also deals with cases where the file already exists
                     Dump::write_to_path(val, &xs, flags)?;
@@ -322,8 +228,7 @@ impl Dump {
                 }
 
                 if flags.make_readonly {
-                    fs::set_permissions(x, std::os::unix::fs::PermissionsExt::from_mode(0o555))
-                        .map_err(&mapef)?;
+                    set_perms_to_mode(x, 0o555)?;
                 }
             }
         }
