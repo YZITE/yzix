@@ -17,7 +17,7 @@ version = "1.0"
 features = ["derive", "std"]
 
 [dependencies.tokio]
-version = "1.17"
+version = "1.20"
 
 [dependencies.tokio-util]
 version = "0.7"
