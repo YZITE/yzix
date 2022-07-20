@@ -182,6 +182,20 @@ impl<T> cmp::PartialEq for TaggedHash<T> {
     }
 }
 
+impl<T> cmp::PartialOrd for TaggedHash<T> {
+    #[inline]
+    fn partial_cmp(&self, oth: &Self) -> Option<cmp::Ordering> {
+        Some(self.inner.cmp(&oth.inner))
+    }
+}
+
+impl<T> cmp::Ord for TaggedHash<T> {
+    #[inline]
+    fn cmp(&self, oth: &Self) -> cmp::Ordering {
+        self.inner.cmp(&oth.inner)
+    }
+}
+
 impl<T> core::hash::Hash for TaggedHash<T> {
     #[inline(always)]
     fn hash<H: core::hash::Hasher>(&self, h: &mut H) {
@@ -191,6 +205,18 @@ impl<T> core::hash::Hash for TaggedHash<T> {
 
 impl<T> core::marker::Copy for TaggedHash<T> {}
 impl<T> cmp::Eq for TaggedHash<T> {}
+
+impl<T> std::str::FromStr for TaggedHash<T> {
+    type Err = base64::DecodeError;
+
+    #[inline]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse::<Hash>().map(|inner| Self {
+            inner,
+            _phantom: PhantomData,
+        })
+    }
+}
 
 #[cfg(test)]
 mod tests {

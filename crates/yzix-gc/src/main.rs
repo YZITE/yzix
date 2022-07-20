@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use std::io::ErrorKind as Ek;
 use tracing::{debug, error, info, span, trace, warn, Level};
 use walkdir::WalkDir;
-use yzix_core::{visit_bytes as yvb, StoreHash};
+use yzix_core::{visit_bytes as yvb, Regular, StoreHash, TaggedHash, ThinTree};
 
 #[derive(Debug, clap::Parser)]
 struct Args {
@@ -285,6 +285,9 @@ fn main() -> std::io::Result<()> {
         }};
     }
 
+    let mut used_links = BTreeSet::new();
+    let mut links_complete = true;
+
     for entry in std::fs::read_dir(lp.store_path.as_std_path())? {
         let entry = handlerr!(entry, e, error!("during traversal: {:?}", e));
 
@@ -298,12 +301,20 @@ fn main() -> std::io::Result<()> {
         let h = handlerr!(bn.parse::<StoreHash>(), _, {});
 
         if lp.lpi.contains(&h) {
-            continue;
-        }
-
-        info!("... {}", h);
-        if !dry_run {
-            std::fs::rename(entry.path(), trash.join(h.to_string()))?;
+            if !dry_run {
+                if let Err(e) = ThinTree::read_from_path(&entry.path(), &mut |rh, _| {
+                    used_links.insert(rh);
+                    Ok(())
+                }) {
+                    links_complete = false;
+                    error!("while link-gathering: {:?}", e);
+                }
+            }
+        } else {
+            info!("... {}", h);
+            if !dry_run {
+                std::fs::rename(entry.path(), trash.join(h.to_string()))?;
+            }
         }
     }
 
@@ -341,11 +352,40 @@ fn main() -> std::io::Result<()> {
         }
     }
 
-    // TODO: handle stale links
+    info!("removing trash");
+    std::fs::remove_dir_all(trash.as_std_path())?;
 
-    if !dry_run {
-        info!("removing trash");
-        std::fs::remove_dir_all(trash.as_std_path())?;
+    if !links_complete {
+        error!("unable to remove stale links because the used link list may be incomplete");
+        return Ok(());
+    }
+
+    info!("removing stale links");
+    for entry in std::fs::read_dir(
+        lp.store_path
+            .join(yzix_store_builder::CAFILE_SUBDIR_NAME)
+            .as_std_path(),
+    )? {
+        let entry = handlerr!(entry, e, error!("during traversal: {:?}", e));
+
+        let bn = handlerr!(
+            entry.file_name().into_string(),
+            e,
+            error!("got invalid store path: {:?}", e)
+        );
+
+        let h = handlerr!(
+            bn.parse::<TaggedHash<Regular>>(),
+            e,
+            error!("got invalid links path: {:?}", e)
+        );
+
+        if used_links.contains(&h) {
+            continue;
+        }
+
+        debug!("... {}", h.as_ref());
+        std::fs::remove_file(entry.path())?;
     }
 
     Ok(())
