@@ -156,7 +156,7 @@ impl Driver {
                                 tracing::info!("{}: {}", tid, lmsg);
                             }
                             Resp::TaskBound(tid, Tbr::Queued) => {
-                                tracing::info!(
+                                tracing::debug!(
                                     "{}: queued{}",
                                     tid,
                                     if running.contains_key(&tid) { "" } else { " (unhandled)" }
