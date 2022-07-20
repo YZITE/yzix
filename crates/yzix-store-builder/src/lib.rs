@@ -465,6 +465,7 @@ pub async fn main(
                         // maybe return ResourceBusy when rust#86442 is fixed/stable
                         Ok(())
                     } else {
+                        // TODO: deduplicate files against .links
                         let p = env.store_path.join(h.to_string());
                         let ret = if p.exists() {
                             // TODO: auto repair
