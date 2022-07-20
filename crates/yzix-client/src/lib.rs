@@ -39,6 +39,10 @@ enum WorkMessage {
         data: StoreHash,
         answ_chan: oneshot::Sender<Response>,
     },
+    DownloadRegular {
+        data: TaggedHash<Regular>,
+        answ_chan: oneshot::Sender<Result<Regular, StoreError>>,
+    },
 }
 
 /// represents an in-flight server request, which expects a sequential response.
@@ -55,6 +59,11 @@ struct RSTask {
     answ_chans: Vec<oneshot::Sender<TaskBoundResponse>>,
 }
 
+/// server-side active regular file download
+struct RSRegularDownload {
+    answ_chans: Vec<oneshot::Sender<Result<Regular, StoreError>>>,
+}
+
 impl Driver {
     pub async fn new(stream: TcpStream) -> Self {
         let mut wbs: WbsClientSide<_> = WrappedByteStream::new(stream);
@@ -66,6 +75,8 @@ impl Driver {
             let mut backlog = std::collections::VecDeque::new();
             let mut inflight_info: Option<Inflight> = None;
             let mut running = std::collections::HashMap::<StoreHash, RSTask>::new();
+            let mut running_rdl =
+                std::collections::HashMap::<TaggedHash<Regular>, RSRegularDownload>::new();
             use {Request as Req, Response as Resp, TaskBoundResponse as Tbr};
             loop {
                 tokio::select!(
@@ -94,6 +105,21 @@ impl Driver {
                                     },
                                 }
                             },
+                            WorkMessage::DownloadRegular { data: tid, answ_chan } => {
+                                use std::collections::hash_map::Entry;
+                                tracing::debug!("{}: schedule download", tid.as_ref());
+                                if let Err(e) = wbs.send(Req::DownloadRegular(tid)).await {
+                                    tracing::error!("connection error: {}", e);
+                                    break;
+                                }
+                                tracing::debug!("{}: download scheduled", tid.as_ref());
+                                match running_rdl.entry(tid) {
+                                    Entry::Occupied(mut occ) => occ.get_mut().answ_chans.push(answ_chan),
+                                    Entry::Vacant(vac) => {
+                                        let _ = vac.insert(RSRegularDownload { answ_chans: vec![answ_chan] });
+                                    },
+                                }
+                            },
                             _ => {
                                 let (xmsg, answ_chan) = match msg {
                                     WorkMessage::GetStorePath { answ_chan } =>
@@ -104,7 +130,9 @@ impl Driver {
                                         (Req::HasOutHash(data), answ_chan),
                                     WorkMessage::Download { data, answ_chan } =>
                                         (Req::Download(data), answ_chan),
-                                    _ => unreachable!(),
+                                    WorkMessage::DownloadRegular { .. }
+                                    | WorkMessage::SubmitTask { .. } =>
+                                        unreachable!(),
                                 };
                                 backlog.push_back((xmsg, answ_chan));
                             }
@@ -149,6 +177,20 @@ impl Driver {
                                     drop::<Result<_, _>>(x.answ_chan.send(Resp::TaskBound(tid, tbr)));
                                 } else {
                                     tracing::warn!("{}: {:?} (unhandled)", tid, tbr);
+                                }
+                            }
+                            Resp::RegularBound(tid, tbr) => {
+                                match running_rdl.remove(&tid) {
+                                    Some(rinfo) => {
+                                        tracing::debug!("{} downloaded", tid.as_ref());
+                                        // broadcast
+                                        for i in rinfo.answ_chans {
+                                            drop::<Result<_, _>>(i.send(tbr.clone()));
+                                        }
+                                    }
+                                    None => {
+                                        tracing::warn!("{} downloaded (unhandled)", tid.as_ref());
+                                    }
                                 }
                             }
                             Resp::LogError => {
@@ -227,6 +269,14 @@ impl Driver {
         let (answ_chan, answ_get) = oneshot::channel();
         self.wchan_s
             .send(WorkMessage::Download { data, answ_chan })
+            .unwrap();
+        answ_get.await.unwrap()
+    }
+
+    pub async fn download_regular(&self, data: TaggedHash<Regular>) -> Result<Regular, StoreError> {
+        let (answ_chan, answ_get) = oneshot::channel();
+        self.wchan_s
+            .send(WorkMessage::DownloadRegular { data, answ_chan })
             .unwrap();
         answ_get.await.unwrap()
     }

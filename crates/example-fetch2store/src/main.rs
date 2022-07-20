@@ -1,4 +1,4 @@
-use yzix_client::{Driver, ThinTree, Regular, StoreHash};
+use yzix_client::{Driver, Regular, StoreHash, ThinTree};
 
 #[derive(Debug, clap::Parser)]
 struct Args {

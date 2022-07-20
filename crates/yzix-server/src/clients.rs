@@ -151,6 +151,20 @@ pub async fn handle_client(
                     });
                     Some(CtrlMsg::Download { outhash, answ_chan })
                 }
+                Req::DownloadRegular(outhash) => {
+                    let (answ_chan, answ_recv) = oneshot::channel();
+                    let resp_s = resp_s.clone();
+                    let _ = tokio::spawn(async move {
+                        resp_s
+                            .send(match answ_recv.await {
+                                Ok(Ok(regu)) => Response::RegularBound(outhash, Ok(regu)),
+                                Ok(Err(e)) => Response::RegularBound(outhash, Err(e)),
+                                Err(_) => Response::Aborted,
+                            })
+                            .await
+                    });
+                    Some(CtrlMsg::DownloadRegular { outhash, answ_chan })
+                }
             };
             if let Some(inner) = req {
                 if reqs.send(inner).await.is_err() {

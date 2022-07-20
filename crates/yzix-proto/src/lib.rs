@@ -27,6 +27,7 @@ pub enum Request {
     Upload(ThinTree),
     HasOutHash(StoreHash),
     Download(StoreHash),
+    DownloadRegular(TaggedHash<Regular>),
 }
 
 impl fmt::Display for Request {
@@ -46,6 +47,7 @@ impl fmt::Display for Request {
             Request::Upload(d) => write!(f, "Upload(...@ {})", StoreHash::hash_complex(d)),
             Request::HasOutHash(h) => write!(f, "HasOutHash({})", h),
             Request::Download(h) => write!(f, "Download({})", h),
+            Request::DownloadRegular(h) => write!(f, "DownloadRegular({})", h.as_ref()),
         }
     }
 }
@@ -59,6 +61,7 @@ pub enum Response {
     Text(String),
     Dump(ThinTree),
     TaskBound(StoreHash, TaskBoundResponse),
+    RegularBound(TaggedHash<Regular>, Result<Regular, StoreError>),
 }
 
 impl Response {
@@ -70,6 +73,7 @@ impl Response {
                 | Response::Text(_)
                 | Response::Dump(_)
                 | Response::TaskBound(_, TaskBoundResponse::BuildSuccess(_))
+                | Response::RegularBound(_, Ok(_))
         )
     }
 }

@@ -8,8 +8,8 @@ use crate::{
     StoreErrorKind as ErrorKind, TaggedHash,
 };
 use camino::Utf8PathBuf;
-use std::{fmt, fs};
 use std::path::{Path, PathBuf};
+use std::{fmt, fs};
 
 /// sort-of emulation of NAR, but omits the contents of most non-self-referential `Regular` entries,
 /// and instead just saves the hash of files, which get hard-linked on realisation.

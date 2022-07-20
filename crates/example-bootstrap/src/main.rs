@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use tracing::{error, info};
 use yzix_client::{
-    Driver, ThinTree, OutputName, Regular, StoreHash, TaskBoundResponse as Tbr, WorkItem,
+    Driver, OutputName, Regular, StoreHash, TaskBoundResponse as Tbr, ThinTree, WorkItem,
 };
 
 async fn my_fetch(url: &str) -> Result<Vec<u8>, reqwest::Error> {
@@ -150,8 +150,9 @@ async fn gen_wrappers(
     }
 
     let mut dump = ThinTree::Directory(dir);
-    dump =
-        ThinTree::Directory(std::iter::once(("bin".to_string().try_into().unwrap(), dump)).collect());
+    dump = ThinTree::Directory(
+        std::iter::once(("bin".to_string().try_into().unwrap(), dump)).collect(),
+    );
     smart_upload(driver, dump, "genWrappers").await
 }
 
