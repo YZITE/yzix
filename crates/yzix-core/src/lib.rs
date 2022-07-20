@@ -18,8 +18,6 @@ pub use dump::{Dump, Flags as DumpFlags};
 mod regular;
 pub use regular::{Flags as RegularFlags, Regular};
 pub mod store_utils;
-mod thintree;
-pub use thintree::ThinTree;
 mod semitree;
 pub use semitree::{SemiTree, SubmitError as SemiTreeSubmitError};
 
