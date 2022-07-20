@@ -24,7 +24,7 @@ pub enum Request {
     GetStorePath,
     Kill(StoreHash),
     SubmitTask { item: WorkItem, subscribe2log: bool },
-    Upload(Dump),
+    Upload(ThinTree),
     HasOutHash(StoreHash),
     Download(StoreHash),
 }
@@ -57,7 +57,7 @@ pub enum Response {
     False,
     LogError,
     Text(String),
-    Dump(Dump),
+    Dump(ThinTree),
     TaskBound(StoreHash, TaskBoundResponse),
 }
 

@@ -28,7 +28,7 @@ enum WorkMessage {
         answ_chan: oneshot::Sender<TaskBoundResponse>,
     },
     Upload {
-        data: Dump,
+        data: ThinTree,
         answ_chan: oneshot::Sender<Response>,
     },
     HasOutHash {
@@ -207,7 +207,7 @@ impl Driver {
         answ_get.await.unwrap()
     }
 
-    pub async fn upload(&self, data: Dump) -> Response {
+    pub async fn upload(&self, data: ThinTree) -> Response {
         let (answ_chan, answ_get) = oneshot::channel();
         self.wchan_s
             .send(WorkMessage::Upload { data, answ_chan })

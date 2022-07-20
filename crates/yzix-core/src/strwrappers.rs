@@ -150,18 +150,6 @@ impl BaseName {
     }
 }
 
-pub(crate) struct FilesDebug<'a>(pub(crate) &'a std::collections::BTreeMap<BaseName, crate::Dump>);
-
-impl fmt::Debug for FilesDebug<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut dm = f.debug_map();
-        for (k, v) in self.0 {
-            dm.entry(&k.0, &format_args!("{}", v));
-        }
-        dm.finish()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{is_default_output, OutputName};

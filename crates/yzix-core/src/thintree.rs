@@ -8,10 +8,10 @@ use crate::{
     StoreErrorKind as ErrorKind, TaggedHash,
 };
 use camino::Utf8PathBuf;
-use std::fs;
+use std::{fmt, fs};
 use std::path::{Path, PathBuf};
 
-/// this is like [`Dump`](crate::Dump), but omits the contents of `Regular`,
+/// sort-of emulation of NAR, but omits the contents of most non-self-referential `Regular` entries,
 /// and instead just saves the hash of files, which get hard-linked on realisation.
 ///
 /// this does intentionally not implement [`yvb::Element`], because the supposed
@@ -30,6 +30,13 @@ pub enum ThinTree {
 pub enum SubmitError {
     StoreErr(Error),
     StoreLoop(Regular),
+}
+
+impl fmt::Display for ThinTree {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        crate::StoreHash::hash_complex(self).fmt(f)
+    }
 }
 
 impl crate::Serialize for ThinTree {
@@ -94,9 +101,9 @@ impl yvb::Element for ThinTree {
 impl ThinTree {
     /// read a thin tree from a path,
     /// submit all encountered regular files via `submit`
-    pub fn read_from_path<Fs>(x: &Path, submit: &Fs) -> Result<Self, Error>
+    pub fn read_from_path<Fs>(x: &Path, submit: &mut Fs) -> Result<Self, Error>
     where
-        Fs: Fn(TaggedHash<Regular>, Regular) -> Result<(), SubmitError>,
+        Fs: FnMut(TaggedHash<Regular>, Regular) -> Result<(), SubmitError>,
     {
         let mapef = mk_mapef(x);
         let meta = fs::symlink_metadata(x).map_err(&mapef)?;
@@ -155,6 +162,7 @@ impl ThinTree {
         let reftime = mk_reftime();
         let mapef = mk_mapef(x);
         use std::io::ErrorKind as IoErrorKind;
+        let mut skip_write = false;
 
         if let Ok(y) = fs::symlink_metadata(x) {
             if !flags.force {
@@ -168,6 +176,16 @@ impl ThinTree {
                 } else {
                     // `x` is a directory and `self` isn't
                     fs::remove_dir_all(x).map_err(&mapef)?;
+                }
+            } else if let ThinTree::RegularInline(Regular { contents, .. }) = self {
+                if fs::read(x)
+                    .map(|curcts| &curcts == contents)
+                    .unwrap_or(false)
+                {
+                    skip_write = true;
+                } else {
+                    // recreation is cheap
+                    fs::remove_file(x).map_err(&mapef)?;
                 }
             } else {
                 // recreation is cheap
@@ -195,7 +213,7 @@ impl ThinTree {
             Self::RegularInline(regi) => regi.write_to_path(
                 x,
                 RegularFlags {
-                    skip_write: false,
+                    skip_write,
                     make_readonly: flags.make_readonly,
                 },
             ),

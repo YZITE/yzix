@@ -17,7 +17,7 @@ use tokio::task::{block_in_place, spawn_blocking};
 use tracing::{debug, error, span, trace, warn, Level};
 use tracing_futures::Instrument as _;
 use yzix_core::{
-    Dump, DumpFlags, Regular, StoreError, StoreHash, TaggedHash, TaskBoundResponse, ThinTree,
+    DumpFlags, Regular, StoreError, StoreHash, TaggedHash, TaskBoundResponse, ThinTree,
 };
 
 mod fwi;
@@ -45,7 +45,7 @@ pub enum ControlMessage {
         answ_chan: oneshot::Sender<TaskId>,
     },
     Upload {
-        dump: Dump,
+        dump: ThinTree,
         answ_chan: oneshot::Sender<Result<(), StoreError>>,
     },
     HasOutHash {
@@ -54,7 +54,11 @@ pub enum ControlMessage {
     },
     Download {
         outhash: StoreHash,
-        answ_chan: oneshot::Sender<Result<Dump, StoreError>>,
+        answ_chan: oneshot::Sender<Result<ThinTree, StoreError>>,
+    },
+    DownloadRegular {
+        outhash: TaggedHash<Regular>,
+        answ_chan: oneshot::Sender<Result<Regular, StoreError>>,
     },
 }
 
@@ -71,6 +75,9 @@ impl fmt::Display for ControlMessage {
             }
             Self::HasOutHash { outhash, .. } => write!(f, "HasOutHash({})", outhash),
             Self::Download { outhash, .. } => write!(f, "Download({})", outhash),
+            Self::DownloadRegular { outhash, .. } => {
+                write!(f, "DownloadRegular({})", outhash.as_ref())
+            }
         }
     }
 }
@@ -150,6 +157,16 @@ async fn handle_subscribe(
     }
 }
 
+fn mk_request_cafile(
+    store_path: &Utf8Path,
+) -> impl (Fn(TaggedHash<Regular>) -> Result<std::path::PathBuf, StoreError>) + '_ {
+    move |rh: TaggedHash<Regular>| {
+        let mut x = store_path.join(CAFILE_SUBDIR_NAME);
+        x.push(rh.as_ref().to_string());
+        Ok(x.into_std_path_buf())
+    }
+}
+
 fn register_cafile(
     store_path: &Utf8Path,
     store_cafiles_locks: &std::sync::Mutex<HashSet<TaggedHash<Regular>>>,
@@ -160,11 +177,10 @@ fn register_cafile(
         return Ok(());
     }
 
-    let mut p = store_path.join(CAFILE_SUBDIR_NAME);
-    p.push(hash.as_ref().to_string());
+    let p = (mk_request_cafile(store_path))(hash).unwrap();
     let ret = if !p.exists() {
         regu.write_to_path(
-            p.as_std_path(),
+            &p,
             yzix_core::RegularFlags {
                 skip_write: false,
                 make_readonly: true,
@@ -258,11 +274,7 @@ async fn handle_submit_task(
                                         force: true,
                                         make_readonly: true,
                                     },
-                                    &|rh: TaggedHash<Regular>| {
-                                        let mut x = parent.store_path.join(CAFILE_SUBDIR_NAME);
-                                        x.push(rh.as_ref().to_string());
-                                        Ok(x.into_std_path_buf())
-                                    },
+                                    &mk_request_cafile(&parent.store_path),
                                 ) {
                                     error!("dumping to store failed: {}", e);
                                     parent.store_locks.lock().unwrap().remove(&realhash);
@@ -448,7 +460,7 @@ pub async fn main(
             Cm::Upload { dump, answ_chan } => {
                 let env = env.clone();
                 spawn_blocking(move || {
-                    let h = StoreHash::hash_complex::<Dump>(&dump);
+                    let h = StoreHash::hash_complex::<ThinTree>(&dump);
                     let res = if !env.store_locks.lock().unwrap().insert(h) {
                         // maybe return ResourceBusy when rust#86442 is fixed/stable
                         Ok(())
@@ -463,6 +475,7 @@ pub async fn main(
                                 force: false,
                                 make_readonly: true,
                             },
+                            &mk_request_cafile(&env.store_path),
                         ) {
                             Err(e)
                         } else {
@@ -497,10 +510,43 @@ pub async fn main(
                             .into(),
                         })
                     } else {
-                        Dump::read_from_path(&real_path)
+                        let rqcf = mk_request_cafile(&env.store_path);
+                        ThinTree::read_from_path(&real_path, &mut |rh, regu| {
+                            if rqcf(rh).map(|i| i.exists()) == Ok(true) {
+                                Ok(())
+                            } else {
+                                Err(yzix_core::ThinTreeSubmitError::StoreLoop(regu))
+                            }
+                        })
                     };
                     let _ = answ_chan.send(res).is_err();
                 });
+            }
+            Cm::DownloadRegular { outhash, answ_chan } => {
+                let real_path = (mk_request_cafile(&env.store_path))(outhash).unwrap();
+                let res = if !matches!(
+                    env.store_cafiles_locks.lock().map(|i| i.contains(&outhash)),
+                    Ok(false)
+                ) {
+                    Err(StoreError {
+                        real_path,
+                        kind: std::io::Error::new(
+                            std::io::ErrorKind::WouldBlock,
+                            "path is currently locked",
+                        )
+                        .into(),
+                    })
+                } else {
+                    tokio::task::block_in_place(|| {
+                        let meta =
+                            std::fs::symlink_metadata(&real_path).map_err(|e| StoreError {
+                                real_path: real_path.clone(),
+                                kind: e.into(),
+                            })?;
+                        Regular::read_from_path(&real_path, &meta)
+                    })
+                };
+                let _ = answ_chan.send(res).is_err();
             }
         }
     }

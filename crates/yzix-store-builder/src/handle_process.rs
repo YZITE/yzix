@@ -284,6 +284,7 @@ pub async fn handle_process(
                     force: true,
                     make_readonly: false,
                 },
+                &crate::mk_request_cafile(store_path),
             )
         })?;
     }
@@ -345,8 +346,8 @@ pub async fn handle_process(
                 tokio::task::block_in_place(|| {
                     let semitree = ThinTree::read_from_path(
                         &fake_store.join(&plh.to_string()),
-                        &|rh, regu: Regular| {
-                            use yzix_core::SemiTreeSubmitError as Stse;
+                        &mut |rh, regu: Regular| {
+                            use yzix_core::ThinTreeSubmitError as Stse;
                             let mut dtct = crate::store_refs::Contains {
                                 spec: &stspec,
                                 refs: &dtctrefs,

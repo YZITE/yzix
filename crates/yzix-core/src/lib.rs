@@ -12,9 +12,6 @@ pub use strwrappers::*;
 mod wi;
 pub use wi::WorkItem;
 
-mod dump;
-pub use dump::{Dump, Flags as DumpFlags};
-
 mod regular;
 pub use regular::{Flags as RegularFlags, Regular};
 pub mod store_utils;
@@ -133,4 +130,17 @@ impl From<std::io::Error> for StoreErrorKind {
             desc: e.to_string(),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DumpFlags {
+    /// if `force` is `true`, then `write_to_path` will take additional
+    /// measures which will/might overwrite stuff.
+    ///
+    /// if `force` is `false`, then, if the object to dump already exists,
+    /// it aborts.
+    /// FIXME: make this an enum and make it possible to select a third kind
+    /// of behavoir: validation of an existing tree.
+    pub force: bool,
+    pub make_readonly: bool,
 }

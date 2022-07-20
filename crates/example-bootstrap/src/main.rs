@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use tracing::{error, info};
 use yzix_client::{
-    Driver, Dump, OutputName, Regular, StoreHash, TaskBoundResponse as Tbr, WorkItem,
+    Driver, ThinTree, OutputName, Regular, StoreHash, TaskBoundResponse as Tbr, WorkItem,
 };
 
 async fn my_fetch(url: &str) -> Result<Vec<u8>, reqwest::Error> {
@@ -15,21 +15,21 @@ async fn fetchurl_outside_store(
     expect_hash: &str,
     with_path: &str,
     executable: bool,
-) -> anyhow::Result<Dump> {
+) -> anyhow::Result<ThinTree> {
     let h = expect_hash.parse::<StoreHash>().unwrap();
 
     info!("fetching {} ...", url);
     let contents = my_fetch(url).await?;
     info!("fetching {} ... done", url);
 
-    let mut dump = Dump::Regular(Regular {
+    let mut dump = ThinTree::RegularInline(Regular {
         executable,
         contents,
     });
 
     if !with_path.is_empty() {
         for i in with_path.split('/') {
-            dump = Dump::Directory(
+            dump = ThinTree::Directory(
                 std::iter::once((i.to_string().try_into().unwrap(), dump)).collect(),
             );
         }
@@ -96,14 +96,14 @@ fn mk_outputs(elems: Vec<&str>) -> BTreeSet<OutputName> {
         .collect()
 }
 
-fn mk_envfiles(elems: Vec<(&str, Dump)>) -> BTreeMap<yzix_client::BaseName, Dump> {
+fn mk_envfiles(elems: Vec<(&str, ThinTree)>) -> BTreeMap<yzix_client::BaseName, ThinTree> {
     elems
         .into_iter()
         .map(|(k, v)| (k.to_string().try_into().unwrap(), v))
         .collect()
 }
 
-async fn smart_upload(driver: &Driver, dump: Dump, name: &str) -> anyhow::Result<StoreHash> {
+async fn smart_upload(driver: &Driver, dump: ThinTree, name: &str) -> anyhow::Result<StoreHash> {
     let h = StoreHash::hash_complex(&dump);
 
     if !driver.has_out_hash(h).await {
@@ -121,8 +121,8 @@ async fn gen_wrappers(
     store_path: &str,
     bootstrap_tools: StoreHash,
 ) -> anyhow::Result<StoreHash> {
-    fn gen_wrapper(store_path: &str, bootstrap_tools: StoreHash, element: &str) -> Dump {
-        Dump::Regular(Regular {
+    fn gen_wrapper(store_path: &str, bootstrap_tools: StoreHash, element: &str) -> ThinTree {
+        ThinTree::RegularInline(Regular {
             executable: true,
             contents: format!(
                 "#!{stp}/{bst}/bin/bash\nexec {stp}/{bst}/bin/{elem} $NIX_WRAPPER_{elemshv}_ARGS \"$@\"\n",
@@ -149,9 +149,9 @@ async fn gen_wrappers(
         dir.insert(to.to_string().try_into().unwrap(), dir[from].clone());
     }
 
-    let mut dump = Dump::Directory(dir);
+    let mut dump = ThinTree::Directory(dir);
     dump =
-        Dump::Directory(std::iter::once(("bin".to_string().try_into().unwrap(), dump)).collect());
+        ThinTree::Directory(std::iter::once(("bin".to_string().try_into().unwrap(), dump)).collect());
     smart_upload(driver, dump, "genWrappers").await
 }
 
@@ -300,7 +300,7 @@ async fn main() -> anyhow::Result<()> {
     // imported from from scratchix
     let buildsh = smart_upload(
         &driver,
-        Dump::Regular(Regular {
+        ThinTree::RegularInline(Regular {
             executable: true,
             contents: include_str!("stage1/mkDerivation-builder.sh")
                 .replace(
@@ -348,7 +348,7 @@ async fn main() -> anyhow::Result<()> {
             outputs: mk_outputs(vec!["out"]),
             files: mk_envfiles(vec![(
                 "build.sh",
-                Dump::Regular(Regular {
+                ThinTree::RegularInline(Regular {
                     executable: true,
                     contents: kernel_headers_script.to_string().into_bytes(),
                 }),
@@ -395,14 +395,14 @@ async fn main() -> anyhow::Result<()> {
             files: mk_envfiles(vec![
                 (
                     "build.sh",
-                    Dump::Regular(Regular {
+                    ThinTree::RegularInline(Regular {
                         executable: true,
                         contents: binutils_script.to_string().into_bytes(),
                     }),
                 ),
                 (
                     "patches",
-                    Dump::Regular(Regular {
+                    ThinTree::RegularInline(Regular {
                         executable: false,
                         contents: vec![asrp.await?]
                             .into_iter()
@@ -418,7 +418,7 @@ async fn main() -> anyhow::Result<()> {
 
     let h_gnu_generic_script = smart_upload(
         &driver,
-        Dump::Regular(Regular {
+        ThinTree::RegularInline(Regular {
             executable: true,
             contents: indoc! {"
                 set -xe
@@ -626,7 +626,7 @@ async fn main() -> anyhow::Result<()> {
             outputs: mk_outputs(vec!["out"]),
             files: mk_envfiles(vec![(
                 "build.sh",
-                Dump::Regular(Regular {
+                ThinTree::RegularInline(Regular {
                     executable: true,
                     contents: gcc_script.to_string().into_bytes(),
                 }),
@@ -689,7 +689,7 @@ async fn main() -> anyhow::Result<()> {
             outputs: mk_outputs(vec!["out"]),
             files: mk_envfiles(vec![(
                 "build.sh",
-                Dump::Regular(Regular {
+                ThinTree::RegularInline(Regular {
                     executable: true,
                     contents: perl_script.to_string().into_bytes(),
                 }),
@@ -732,7 +732,7 @@ async fn main() -> anyhow::Result<()> {
             outputs: mk_outputs(vec!["out"]),
             files: mk_envfiles(vec![(
                 "build.sh",
-                Dump::Regular(Regular {
+                ThinTree::RegularInline(Regular {
                     executable: true,
                     contents: indoc! {"
                             set -xe
@@ -795,16 +795,16 @@ async fn main() -> anyhow::Result<()> {
             files: mk_envfiles(vec![
                 (
                     "patches",
-                    Dump::Directory(std::iter::once((
+                    ThinTree::Directory(std::iter::once((
                         "no-ldconfig.patch".to_string().try_into().unwrap(),
-                        Dump::SymLink {
+                        ThinTree::SymLink {
                             target: format!("{}/{}", store_path2, no_ldconfig.await?).into(),
                         },
                     )).collect()),
                 ),
                 (
                     "build.sh",
-                    Dump::Regular(Regular {
+                    ThinTree::RegularInline(Regular {
                         executable: true,
                         contents: indoc! {"
                             set -xe
@@ -869,7 +869,7 @@ async fn main() -> anyhow::Result<()> {
 
     let buildscript_glibc = smart_upload(
         &driver,
-        Dump::Regular(Regular {
+        ThinTree::RegularInline(Regular {
             executable: true,
             contents: include_str!("stage1/buildscript-glibc.sh")
                 .replace(

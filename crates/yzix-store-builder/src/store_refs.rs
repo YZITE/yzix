@@ -3,7 +3,7 @@ use lru::LruCache;
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 use store_ref_scanner::{StoreRefScanner, StoreSpec};
-use yzix_core::{visit_bytes as yvb, Dump, StoreHash};
+use yzix_core::{visit_bytes as yvb, StoreHash, ThinTree};
 
 pub struct Extract<'a> {
     pub spec: &'a StoreSpec<'a>,
@@ -85,16 +85,26 @@ pub fn determine_store_closure(
             }
             if let Some(tmp_refs) = cache.get(&i) {
                 new_refs.extend(tmp_refs.iter().copied());
-            } else if let Ok(dump) =
-                Dump::read_from_path(store_path.join(i.to_string()).as_std_path())
-            {
+            } else {
+                use yvb::Element;
                 let mut e = Extract {
                     spec: &stspec,
                     refs: BTreeSet::new(),
                 };
-                yvb::Element::accept(&dump, &mut e);
-                new_refs.extend(e.refs.iter().copied());
-                cache.put(i, e.refs);
+                if let Ok(dump) = ThinTree::read_from_path(
+                    store_path.join(i.to_string()).as_std_path(),
+                    &mut |_, regu| {
+                        // this prevents an allocation of memory for
+                        // all files in a directory tree,
+                        // instead handles files one-by-one.
+                        regu.accept(&mut e);
+                        Ok(())
+                    },
+                ) {
+                    dump.accept(&mut e);
+                    new_refs.extend(e.refs.iter().copied());
+                    cache.put(i, e.refs);
+                }
             }
         }
     }

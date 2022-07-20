@@ -1,4 +1,4 @@
-use yzix_client::{Driver, Dump, Regular, StoreHash};
+use yzix_client::{Driver, ThinTree, Regular, StoreHash};
 
 #[derive(Debug, clap::Parser)]
 struct Args {
@@ -34,7 +34,7 @@ async fn main() {
         .expect("unable to send authentication info to yzix server");
     let driver = Driver::new(stream).await;
 
-    let mut dump = Dump::Regular(Regular {
+    let mut dump = ThinTree::RegularInline(Regular {
         executable: args.executable,
         contents: my_fetch(&args.url_to_fetch)
             .await
@@ -43,7 +43,7 @@ async fn main() {
 
     if let Some(path) = &args.with_path {
         for i in path.split('/') {
-            dump = Dump::Directory(
+            dump = ThinTree::Directory(
                 std::iter::once((i.to_string().try_into().unwrap(), dump)).collect(),
             );
         }

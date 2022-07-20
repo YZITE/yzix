@@ -10,7 +10,19 @@ pub struct WorkItem {
     // used for e.g. structured attrs, where it doesn't make sense to first
     // serialize a dump to the store to use it only once
     // the files get placed into the `/build` directory
-    pub files: BTreeMap<crate::BaseName, crate::Dump>,
+    pub files: BTreeMap<crate::BaseName, crate::ThinTree>,
+}
+
+struct FilesDebug<'a>(pub(crate) &'a std::collections::BTreeMap<crate::BaseName, crate::ThinTree>);
+
+impl fmt::Debug for FilesDebug<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut dm = f.debug_map();
+        for (k, v) in self.0 {
+            dm.entry(&*k, &format_args!("{}", v));
+        }
+        dm.finish()
+    }
 }
 
 impl fmt::Debug for WorkItem {
@@ -19,7 +31,7 @@ impl fmt::Debug for WorkItem {
             .field("args", &self.args)
             .field("envs", &self.envs)
             .field("outputs", &self.outputs)
-            .field("files", &crate::strwrappers::FilesDebug(&self.files))
+            .field("files", &FilesDebug(&self.files))
             .finish()
     }
 }
