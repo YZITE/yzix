@@ -27,7 +27,7 @@ pub enum SemiTree {
     Directory(std::collections::BTreeMap<BaseName, SemiTree>),
 }
 
-pub enum SemiTreeSubmitError {
+pub enum SubmitError {
     StoreErr(Error),
     StoreLoop(Regular),
 }
@@ -96,7 +96,7 @@ impl SemiTree {
     /// submit all encountered regular files via `submit`
     pub fn read_from_path<Fs>(x: &Path, submit: &Fs) -> Result<Self, Error>
     where
-        Fs: Fn(TaggedHash<Regular>, Regular) -> Result<(), SemiTreeSubmitError>,
+        Fs: Fn(TaggedHash<Regular>, Regular) -> Result<(), SubmitError>,
     {
         let mapef = mk_mapef(x);
         let meta = fs::symlink_metadata(x).map_err(&mapef)?;
@@ -117,8 +117,8 @@ impl SemiTree {
             let h = TaggedHash::hash_complex(&regu);
             match submit(h, regu) {
                 Ok(()) => Self::Regular(h),
-                Err(SemiTreeSubmitError::StoreLoop(regu)) => Self::RegularInline(regu),
-                Err(SemiTreeSubmitError::StoreErr(e)) => return Err(e),
+                Err(SubmitError::StoreLoop(regu)) => Self::RegularInline(regu),
+                Err(SubmitError::StoreErr(e)) => return Err(e),
             }
         } else if ty.is_dir() {
             Self::Directory(

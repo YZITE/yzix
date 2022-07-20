@@ -341,6 +341,8 @@ fn main() -> std::io::Result<()> {
         }
     }
 
+    // TODO: handle stale links
+
     if !dry_run {
         info!("removing trash");
         std::fs::remove_dir_all(trash.as_std_path())?;

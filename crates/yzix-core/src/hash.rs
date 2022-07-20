@@ -127,7 +127,7 @@ impl<'de> serde::Deserialize<'de> for Hash {
 pub struct TaggedHash<T> {
     inner: Hash,
     #[serde(default, skip_serializing)]
-    _phantom: PhantomData<*const T>,
+    _phantom: PhantomData<fn() -> T>,
 }
 
 impl<T> convert::AsRef<Hash> for TaggedHash<T> {
@@ -162,7 +162,7 @@ impl<T> core::clone::Clone for TaggedHash<T> {
             _phantom: PhantomData,
         }
     }
-    #[inline]
+    #[inline(always)]
     fn clone_from(&mut self, source: &Self) {
         self.inner = source.inner;
     }
@@ -179,6 +179,13 @@ impl<T> cmp::PartialEq for TaggedHash<T> {
     #[inline]
     fn eq(&self, oth: &Self) -> bool {
         self.inner == oth.inner
+    }
+}
+
+impl<T> core::hash::Hash for TaggedHash<T> {
+    #[inline(always)]
+    fn hash<H: core::hash::Hasher>(&self, h: &mut H) {
+        self.inner.hash(h);
     }
 }
 

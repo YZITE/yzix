@@ -16,7 +16,9 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::{block_in_place, spawn_blocking};
 use tracing::{debug, error, span, trace, warn, Level};
 use tracing_futures::Instrument as _;
-use yzix_core::{Dump, DumpFlags, StoreError, StoreHash, TaskBoundResponse};
+use yzix_core::{
+    Dump, DumpFlags, Regular, SemiTree, StoreError, StoreHash, TaggedHash, TaskBoundResponse,
+};
 
 mod fwi;
 use fwi::FullWorkItem;
@@ -28,6 +30,7 @@ use pool::Pool;
 pub mod store_refs;
 
 pub const INPUT_REALISATION_DIR_POSTFIX: &str = ".in";
+pub const CAFILE_SUBDIR_NAME: &str = ".links";
 
 pub type TaskId = StoreHash;
 
@@ -97,6 +100,9 @@ struct Env {
     // outhash-locking, to prevent racing in the store
     store_locks: std::sync::Mutex<HashSet<StoreHash>>,
 
+    // outhash-locking for the non-tree part
+    store_cafiles_locks: std::sync::Mutex<HashSet<TaggedHash<Regular>>>,
+
     // inhash-locking, to prevent racing a workitem with itself
     tasks: tokio::sync::Mutex<BTreeMap<StoreHash, Task>>,
 }
@@ -142,6 +148,34 @@ async fn handle_subscribe(
             break;
         }
     }
+}
+
+fn register_cafile(
+    store_path: &Utf8Path,
+    store_cafiles_locks: &std::sync::Mutex<HashSet<TaggedHash<Regular>>>,
+    hash: TaggedHash<Regular>,
+    regu: Regular,
+) -> Result<(), yzix_core::StoreError> {
+    if !store_cafiles_locks.lock().unwrap().insert(hash) {
+        return Ok(());
+    }
+
+    let mut p = store_path.join(CAFILE_SUBDIR_NAME);
+    p.push(hash.as_ref().to_string());
+    let ret = if !p.exists() {
+        regu.write_to_path(
+            p.as_std_path(),
+            yzix_core::RegularFlags {
+                skip_write: false,
+                make_readonly: true,
+            },
+        )
+    } else {
+        Ok(())
+    };
+
+    store_cafiles_locks.lock().unwrap().remove(&hash);
+    ret
 }
 
 // this function is split out from the main loop to prevent too much right-ward drift
@@ -207,7 +241,7 @@ async fn handle_submit_task(
                     tokio::task::spawn_blocking(move || {
                         let mut ret = BTreeMap::new();
                         for (outname, (outhash, dump)) in x {
-                            let realhash = StoreHash::hash_complex::<Dump>(&dump);
+                            let realhash = StoreHash::hash_complex::<SemiTree>(&dump);
                             let span = span!(Level::ERROR, "output", %outname, %outhash, %realhash);
                             let _guard = span.enter();
                             let realdstpath = parent
@@ -223,6 +257,11 @@ async fn handle_submit_task(
                                     DumpFlags {
                                         force: true,
                                         make_readonly: true,
+                                    },
+                                    &|rh: TaggedHash<Regular>| {
+                                        let mut x = parent.store_path.join(CAFILE_SUBDIR_NAME);
+                                        x.push(rh.as_ref().to_string());
+                                        Ok(x.into_std_path_buf())
                                     },
                                 ) {
                                     error!("dumping to store failed: {}", e);
@@ -315,6 +354,8 @@ pub async fn main(
     assert_ne!(cpucnt, 0);
 
     std::fs::create_dir_all(&store_path).expect("unable to create store dir");
+    std::fs::create_dir_all(&store_path.join(CAFILE_SUBDIR_NAME))
+        .expect("unable to create store/.links dir");
 
     // setup pools
     let containerpool = Pool::<String>::default();
@@ -329,6 +370,7 @@ pub async fn main(
 
         cache_store_refs: std::sync::Mutex::new(store_refs::Cache::new(1000)),
         store_locks: Default::default(),
+        store_cafiles_locks: Default::default(),
         tasks: Default::default(),
     });
 

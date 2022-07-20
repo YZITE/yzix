@@ -37,6 +37,24 @@ impl<'a> yvb::VisitorMut for &'a Rewrite<'a> {
     }
 }
 
+pub struct Contains<'a> {
+    pub spec: &'a StoreSpec<'a>,
+    pub refs: &'a BTreeSet<StoreHash>,
+    pub cont: bool,
+}
+
+impl<'a> yvb::Visitor for Contains<'a> {
+    fn visit_bytes(&mut self, bytes: &[u8]) {
+        for i in StoreRefScanner::new(bytes, self.spec) {
+            // SAFETY: we know that only ASCII chars are possible here
+            let oldhash = StoreHash::from_str(std::str::from_utf8(i).unwrap()).unwrap();
+            if self.refs.contains(&oldhash) {
+                self.cont = true;
+            }
+        }
+    }
+}
+
 pub fn build_store_spec(store_path: &Utf8Path) -> store_ref_scanner::StoreSpec<'_> {
     StoreSpec {
         path_to_store: store_path.as_str(),

@@ -21,7 +21,7 @@ pub mod store_utils;
 mod thintree;
 pub use thintree::ThinTree;
 mod semitree;
-pub use semitree::SemiTree;
+pub use semitree::{SemiTree, SubmitError as SemiTreeSubmitError};
 
 mod hash;
 pub use hash::{Hash as StoreHash, TaggedHash};

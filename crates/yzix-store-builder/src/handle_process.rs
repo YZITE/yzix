@@ -3,7 +3,10 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::{marker::Unpin, mem::drop, path::Path, sync::Arc};
 use tokio::sync::broadcast::{self, Receiver, Sender};
 use tracing::trace;
-use yzix_core::{BuildError, Dump, DumpFlags, OutputName, StoreHash, TaskBoundResponse};
+use yzix_core::{
+    visit_bytes::Element as _, BuildError, DumpFlags, OutputName, Regular, SemiTree, StoreHash,
+    TaskBoundResponse,
+};
 
 async fn handle_logging_to_intermed<T: tokio::io::AsyncRead + Unpin>(
     log: Sender<String>,
@@ -223,7 +226,7 @@ pub async fn handle_process(
                 files,
             },
     }: crate::FullWorkItem,
-) -> Result<BTreeMap<OutputName, (StoreHash, Dump)>, BuildError> {
+) -> Result<BTreeMap<OutputName, (StoreHash, SemiTree)>, BuildError> {
     if args.is_empty() || args[0].is_empty() {
         return Err(BuildError::EmptyCommand);
     }
@@ -334,18 +337,44 @@ pub async fn handle_process(
 
     if exs.success() {
         let fake_store = rootdir.join(&store_path.as_str()[1..]);
+        let stspec = crate::store_refs::build_store_spec(store_path);
+        let dtctrefs: BTreeSet<_> = outputs.values().copied().collect();
         let mut outputs: BTreeMap<_, _> = outputs
             .into_iter()
             .map(|(i, plh)| {
                 tokio::task::block_in_place(|| {
-                    let dump = Dump::read_from_path(&fake_store.join(&plh.to_string()))?;
-                    let outhash = StoreHash::hash_complex::<Dump>(&dump);
-                    Ok::<_, yzix_core::StoreError>((i, (plh, dump, outhash)))
+                    let semitree = SemiTree::read_from_path(
+                        &fake_store.join(&plh.to_string()),
+                        &|rh, regu: Regular| {
+                            use yzix_core::SemiTreeSubmitError as Stse;
+                            let mut dtct = crate::store_refs::Contains {
+                                spec: &stspec,
+                                refs: &dtctrefs,
+                                cont: false,
+                            };
+                            regu.accept(&mut dtct);
+                            if dtct.cont {
+                                // regu contains "self-references" to some outputs...
+                                Err(Stse::StoreLoop(regu))
+                            } else {
+                                // copy file directly
+                                crate::register_cafile(
+                                    &store_path,
+                                    &env.store_cafiles_locks,
+                                    rh,
+                                    regu,
+                                )
+                                .map_err(Stse::StoreErr)
+                            }
+                        },
+                    )?;
+                    let outhash = StoreHash::hash_complex::<SemiTree>(&semitree);
+                    Ok::<_, yzix_core::StoreError>((i, (plh, semitree, outhash)))
                 })
             })
             .collect::<Result<_, _>>()?;
+        drop(dtctrefs);
         {
-            let stspec = crate::store_refs::build_store_spec(store_path);
             let rwtr = crate::store_refs::Rewrite {
                 spec: &stspec,
                 rwtab: outputs
@@ -354,7 +383,7 @@ pub async fn handle_process(
                     .collect(),
             };
             for (_, v, _) in &mut outputs.values_mut() {
-                yzix_core::visit_bytes::Element::accept_mut(v, &mut &rwtr);
+                v.accept_mut(&mut &rwtr);
             }
         }
         Ok(outputs
