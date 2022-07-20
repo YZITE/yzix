@@ -51,7 +51,7 @@ impl LivePaths {
                         Ek::InvalidInput => break,
                         Ek::NotFound => {
                             info!("root points to non-existing location, removing");
-                            let _ = std::fs::remove_file(entry_path)?;
+                            std::fs::remove_file(entry_path)?;
                             continue;
                         }
                         _ => return Err(e),
@@ -77,7 +77,7 @@ impl LivePaths {
                 match x.components().next() {
                     None => {
                         warn!("points to store, removing");
-                        let _ = std::fs::remove_file(entry_path)?;
+                        std::fs::remove_file(entry_path)?;
                         continue;
                     }
                     Some(Comp::Normal(y)) => y,
@@ -94,7 +94,7 @@ impl LivePaths {
                                             Ok(f) => f,
                                             Err(e) => match e.kind() {
                                                 Ek::NotFound => {
-                                                    let _ = std::fs::remove_file(entry_path)?;
+                                                    std::fs::remove_file(entry_path)?;
                                                     continue;
                                                 }
                                                 _ => return Err(e),
@@ -106,7 +106,7 @@ impl LivePaths {
                                             let _ = f.unlock();
                                             info!("removing stale temporary root");
                                             std::mem::drop(f);
-                                            let _ = std::fs::remove_file(entry_path)?;
+                                            std::fs::remove_file(entry_path)?;
                                             continue;
                                         }
                                         Err(e) => match e.kind() {

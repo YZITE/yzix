@@ -238,8 +238,8 @@ async fn handle_submit_task(
                     span!(Level::ERROR, "handle_process", ?item.inner.args, ?item.inner.envs);
                 handle_process(
                     HandleProcessArgs {
-                        env: &*parent,
-                        container_name: &*containername,
+                        env: &parent,
+                        container_name: &containername,
                         logs: logs2.clone(),
                     },
                     item,

@@ -19,7 +19,7 @@ pub use codec::*;
 pub type ProtoLen = u32;
 pub const NULL_LEN: [u8; std::mem::size_of::<ProtoLen>()] = [0u8; std::mem::size_of::<ProtoLen>()];
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum Request {
     GetStorePath,
     Kill(StoreHash),
@@ -52,7 +52,7 @@ impl fmt::Display for Request {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum Response {
     Ok,
     Aborted,

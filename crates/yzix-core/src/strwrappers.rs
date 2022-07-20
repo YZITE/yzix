@@ -134,7 +134,7 @@ impl convert::AsRef<Path> for BaseName {
 impl BaseName {
     pub fn decode_from_path(x: &Path) -> Result<Self, crate::StoreError> {
         use crate::{StoreError as Error, StoreErrorKind as ErrorKind};
-        Ok(x.file_name()
+        x.file_name()
             .unwrap()
             .to_str()
             .ok_or_else(|| Error {
@@ -146,7 +146,7 @@ impl BaseName {
             .map_err(|_| Error {
                 real_path: x.to_path_buf(),
                 kind: ErrorKind::InvalidBasename,
-            })?)
+            })
     }
 }
 

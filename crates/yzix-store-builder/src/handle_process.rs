@@ -360,7 +360,7 @@ pub async fn handle_process(
                             } else {
                                 // copy file directly
                                 crate::register_cafile(
-                                    &store_path,
+                                    store_path,
                                     &env.store_cafiles_locks,
                                     rh,
                                     regu,

@@ -28,7 +28,7 @@ pub mod visit_bytes;
 
 use std::collections::BTreeMap;
 
-#[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub enum TaskBoundResponse {
     Queued,
     BuildSuccess(BTreeMap<OutputName, StoreHash>),
@@ -50,7 +50,7 @@ impl From<BuildError> for TaskBoundResponse {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize, thiserror::Error)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, thiserror::Error)]
 pub enum BuildError {
     #[error("command was killed by client")]
     KilledByClient,

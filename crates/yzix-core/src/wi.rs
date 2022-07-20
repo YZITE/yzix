@@ -1,7 +1,7 @@
 use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Clone, Default, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct WorkItem {
     pub args: Vec<String>,
     pub envs: BTreeMap<String, String>,
@@ -19,7 +19,7 @@ impl fmt::Debug for FilesDebug<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut dm = f.debug_map();
         for (k, v) in self.0 {
-            dm.entry(&*k, &format_args!("{}", v));
+            dm.entry(k, &format_args!("{}", v));
         }
         dm.finish()
     }

@@ -17,7 +17,7 @@ static B64_ALPHABET: Lazy<base64::alphabet::Alphabet> = Lazy::new(|| {
 
 static B64_ENGINE: Lazy<FastPortable> = Lazy::new(|| {
     FastPortable::from(
-        &*B64_ALPHABET,
+        &B64_ALPHABET,
         FastPortableConfig::new().with_encode_padding(false),
     )
 });
