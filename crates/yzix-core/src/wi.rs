@@ -13,7 +13,7 @@ pub struct WorkItem {
     pub files: BTreeMap<crate::BaseName, crate::ThinTree>,
 }
 
-struct FilesDebug<'a>(pub(crate) &'a std::collections::BTreeMap<crate::BaseName, crate::ThinTree>);
+struct FilesDebug<'a>(&'a std::collections::BTreeMap<crate::BaseName, crate::ThinTree>);
 
 impl fmt::Debug for FilesDebug<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
