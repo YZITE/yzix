@@ -17,7 +17,7 @@ use tokio::task::{block_in_place, spawn_blocking};
 use tracing::{debug, error, span, trace, warn, Level};
 use tracing_futures::Instrument as _;
 use yzix_core::{
-    Dump, DumpFlags, Regular, SemiTree, StoreError, StoreHash, TaggedHash, TaskBoundResponse,
+    Dump, DumpFlags, Regular, StoreError, StoreHash, TaggedHash, TaskBoundResponse, ThinTree,
 };
 
 mod fwi;
@@ -241,7 +241,7 @@ async fn handle_submit_task(
                     tokio::task::spawn_blocking(move || {
                         let mut ret = BTreeMap::new();
                         for (outname, (outhash, dump)) in x {
-                            let realhash = StoreHash::hash_complex::<SemiTree>(&dump);
+                            let realhash = StoreHash::hash_complex::<ThinTree>(&dump);
                             let span = span!(Level::ERROR, "output", %outname, %outhash, %realhash);
                             let _guard = span.enter();
                             let realdstpath = parent

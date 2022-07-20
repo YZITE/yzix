@@ -4,8 +4,8 @@ use std::{marker::Unpin, mem::drop, path::Path, sync::Arc};
 use tokio::sync::broadcast::{self, Receiver, Sender};
 use tracing::trace;
 use yzix_core::{
-    visit_bytes::Element as _, BuildError, DumpFlags, OutputName, Regular, SemiTree, StoreHash,
-    TaskBoundResponse,
+    visit_bytes::Element as _, BuildError, DumpFlags, OutputName, Regular, StoreHash,
+    TaskBoundResponse, ThinTree,
 };
 
 async fn handle_logging_to_intermed<T: tokio::io::AsyncRead + Unpin>(
@@ -226,7 +226,7 @@ pub async fn handle_process(
                 files,
             },
     }: crate::FullWorkItem,
-) -> Result<BTreeMap<OutputName, (StoreHash, SemiTree)>, BuildError> {
+) -> Result<BTreeMap<OutputName, (StoreHash, ThinTree)>, BuildError> {
     if args.is_empty() || args[0].is_empty() {
         return Err(BuildError::EmptyCommand);
     }
@@ -343,7 +343,7 @@ pub async fn handle_process(
             .into_iter()
             .map(|(i, plh)| {
                 tokio::task::block_in_place(|| {
-                    let semitree = SemiTree::read_from_path(
+                    let semitree = ThinTree::read_from_path(
                         &fake_store.join(&plh.to_string()),
                         &|rh, regu: Regular| {
                             use yzix_core::SemiTreeSubmitError as Stse;
@@ -368,7 +368,7 @@ pub async fn handle_process(
                             }
                         },
                     )?;
-                    let outhash = StoreHash::hash_complex::<SemiTree>(&semitree);
+                    let outhash = StoreHash::hash_complex::<ThinTree>(&semitree);
                     Ok::<_, yzix_core::StoreError>((i, (plh, semitree, outhash)))
                 })
             })

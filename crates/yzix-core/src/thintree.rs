@@ -20,11 +20,11 @@ use std::path::{Path, PathBuf};
 /// this format is supposed to be used mostly in transit, and for exposing separate metadata.
 /// e.g. it should be retrievable from a store server, accompanied by some kind of narinfo metadata.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-pub enum SemiTree {
+pub enum ThinTree {
     Regular(TaggedHash<Regular>),
     RegularInline(Regular),
     SymLink { target: Utf8PathBuf },
-    Directory(std::collections::BTreeMap<BaseName, SemiTree>),
+    Directory(std::collections::BTreeMap<BaseName, ThinTree>),
 }
 
 pub enum SubmitError {
@@ -32,25 +32,25 @@ pub enum SubmitError {
     StoreLoop(Regular),
 }
 
-impl crate::Serialize for SemiTree {
+impl crate::Serialize for ThinTree {
     fn serialize<H: crate::SerUpdate>(&self, state: &mut H) {
         "(".serialize(state);
         "type".serialize(state);
         match self {
-            SemiTree::Regular(h) => {
+            ThinTree::Regular(h) => {
                 "regular.hash".serialize(state);
                 h.serialize(state);
             }
-            SemiTree::RegularInline(regu) => {
+            ThinTree::RegularInline(regu) => {
                 "regular".serialize(state);
                 regu.serialize(state);
             }
-            SemiTree::SymLink { target } => {
+            ThinTree::SymLink { target } => {
                 "symlink".serialize(state);
                 "target".serialize(state);
                 target.as_str().serialize(state);
             }
-            SemiTree::Directory(entries) => {
+            ThinTree::Directory(entries) => {
                 "directory".serialize(state);
                 for (k, v) in entries {
                     for i in ["entry", "(", "name"] {
@@ -67,13 +67,13 @@ impl crate::Serialize for SemiTree {
     }
 }
 
-impl yvb::Element for SemiTree {
+impl yvb::Element for ThinTree {
     fn accept<V: yvb::Visitor>(&self, visitor: &mut V) {
         match self {
-            SemiTree::Regular(_) => {}
-            SemiTree::RegularInline(regu) => regu.accept(visitor),
-            SemiTree::SymLink { target } => target.accept(visitor),
-            SemiTree::Directory(entries) => {
+            ThinTree::Regular(_) => {}
+            ThinTree::RegularInline(regu) => regu.accept(visitor),
+            ThinTree::SymLink { target } => target.accept(visitor),
+            ThinTree::Directory(entries) => {
                 entries.values().for_each(|val| val.accept(visitor));
             }
         }
@@ -81,17 +81,17 @@ impl yvb::Element for SemiTree {
 
     fn accept_mut<V: yvb::VisitorMut>(&mut self, visitor: &mut V) {
         match self {
-            SemiTree::Regular(_) => {}
-            SemiTree::RegularInline(regu) => regu.accept_mut(visitor),
-            SemiTree::SymLink { target } => target.accept_mut(visitor),
-            SemiTree::Directory(entries) => {
+            ThinTree::Regular(_) => {}
+            ThinTree::RegularInline(regu) => regu.accept_mut(visitor),
+            ThinTree::SymLink { target } => target.accept_mut(visitor),
+            ThinTree::Directory(entries) => {
                 entries.values_mut().for_each(|val| val.accept_mut(visitor));
             }
         }
     }
 }
 
-impl SemiTree {
+impl ThinTree {
     /// read a thin tree from a path,
     /// submit all encountered regular files via `submit`
     pub fn read_from_path<Fs>(x: &Path, submit: &Fs) -> Result<Self, Error>
@@ -128,7 +128,7 @@ impl SemiTree {
                         let entry = entry.map_err(&mapef)?;
                         let ep = entry.path();
                         let name = BaseName::decode_from_path(&ep)?;
-                        let val = SemiTree::read_from_path(&ep, submit)?;
+                        let val = ThinTree::read_from_path(&ep, submit)?;
                         Ok((name, val))
                     })
                     .collect::<Result<_, Error>>()?,

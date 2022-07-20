@@ -18,8 +18,8 @@ pub use dump::{Dump, Flags as DumpFlags};
 mod regular;
 pub use regular::{Flags as RegularFlags, Regular};
 pub mod store_utils;
-mod semitree;
-pub use semitree::{SemiTree, SubmitError as SemiTreeSubmitError};
+mod thintree;
+pub use thintree::{SubmitError as ThinTreeSubmitError, ThinTree};
 
 mod hash;
 pub use hash::{Hash as StoreHash, TaggedHash};
