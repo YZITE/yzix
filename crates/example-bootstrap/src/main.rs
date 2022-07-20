@@ -382,7 +382,7 @@ async fn main() -> anyhow::Result<()> {
         let asrp = fetchurl_wrapped(
             &driver2,
             "https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/development/tools/misc/binutils/always-search-rpath.patch",
-            "ZSPPSmFnykfdxs7m2K0TZFRgSg5vdktZpbsJ9_5V0qc",
+            "b6JXhg+NKc2idFHC_4PkO5LjYeKH+gsI1rDa0BUdX+Q",
             "",
             true,
         );
