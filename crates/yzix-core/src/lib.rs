@@ -87,6 +87,21 @@ impl From<std::io::Error> for BuildError {
     }
 }
 
+impl BuildError {
+    pub fn errtype(&self) -> String {
+        match self {
+            BuildError::KilledByClient => "killed.by.client".to_string(),
+            BuildError::Exit(i) => format!("exit.{}", i),
+            BuildError::Killed(i) => format!("killed.by.signal.{}", i),
+            BuildError::Io(i) => format!("io.{}", i),
+            BuildError::EmptyCommand => "empty.command".to_string(),
+            BuildError::HashCollision(h) => format!("hash.collision:{}", h),
+            BuildError::Store(x) => x.kind.errtype(),
+            BuildError::Unknown(s) => "unknown".to_string(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, thiserror::Error)]
 #[error("{real_path}: {kind}")]
 pub struct StoreError {
@@ -128,6 +143,25 @@ impl From<std::io::Error> for StoreErrorKind {
         StoreErrorKind::IoMisc {
             errno: e.raw_os_error(),
             desc: e.to_string(),
+        }
+    }
+}
+
+impl StoreErrorKind {
+    pub fn errtype(&self) -> String {
+        match self {
+            Self::NonUtf8SymlinkTarget => "store.non_utf8.symlink_target".to_string(),
+            Self::NonUtf8Basename => "store.non_utf8.basename".to_string(),
+            Self::UnknownFileType(i) => format!("store.unknown.file_type:{}", i),
+            Self::InvalidBasename => "store.invalid.basename".to_string(),
+            #[cfg(not(any(unix, windows)))]
+            Self::SymlinksUnsupported => "store.unsupported.symlinks".to_string(),
+            Self::OverwriteDeclined => "store.overwrite.declined".to_string(),
+            Self::IoMisc { errno, ... } => if let Some(errno) = errno {
+                format!("store.io.{}", errno)
+            } else {
+                format!("store.io")
+            },
         }
     }
 }

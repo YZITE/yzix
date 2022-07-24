@@ -12,7 +12,7 @@ pub struct ServerConfig {
     bearer_tokens: HashSet<String>,
 }
 
-mod clients;
+mod route;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {

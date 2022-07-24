@@ -55,8 +55,8 @@ TaskBoundResult := variant {
 * `exit.{code}`
 * `io.{errno}`
 * `empty.command`
-* `hash.collision`
-* `unknown:{...}`
+* `hash.collision:{...}`
+* `unknown`
 * `store.non_utf8.symlink_target`
 * `store.non_utf8.basename`
 * `store.unknown.file_type:{...}`
@@ -99,17 +99,17 @@ Download: StoreHash -> ThinTree!Error
 ```
 /info
   GET
-    when requested as text/json:
+    when requested as application/json:
     """
     {
         "StoreDir": "/yzixs",
-        "LogCompression": "zstd",
+        "LogCompression": "zst",
     }
     """
     when requested as text/x-nix-cache-info:
     """
     StoreDir: /yzixs
-    LogCompression: zstd
+    LogCompression: zst
     """
 
 /task
@@ -118,11 +118,18 @@ Download: StoreHash -> ThinTree!Error
     response: log messages as simple strings prefixed with ".",
       last line contains the result (JSON, either errors, or map of outputs).
 
-/logs/{hash}
+/{...}
+  just serves the store directory directly
+
   HEAD
     presence check
   GET
     download
+
+  {...}=
+    .links/*  ... regular files
+    *.log.*   ... log files
+    *         ... store dirs
 
 /store/{hash}/thintree
   HEAD
@@ -131,11 +138,6 @@ Download: StoreHash -> ThinTree!Error
      download
   PUT
      upload (hash gets verified, and the upload will get rejected if the hash mismatches)
-
-/store/{hash}/direct
-  HEAD/GET
-    direct access to the contained objects,
-    but no upload method.
 
 /regulars/{hash}
   same as `/thintrees/{hash}`, but for regular files.
