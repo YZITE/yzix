@@ -1,4 +1,4 @@
-use yzix_client::{Driver, Regular, StoreHash, ThinTree};
+use yzix_client::{Driver, Regular, TaggedHash, ThinTree};
 
 #[derive(Debug, clap::Parser)]
 struct Args {
@@ -51,7 +51,7 @@ async fn main() {
 
     let mut dump2 = dump.clone();
     dump2.submit_all_inlines(&mut |_, _| Ok(())).unwrap();
-    let h = StoreHash::hash_complex(&dump2);
+    let h = TaggedHash::hash_complex(&dump2);
     println!("hash = {}", h);
 
     if driver.has_out_hash(h).await {

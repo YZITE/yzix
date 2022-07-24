@@ -25,7 +25,7 @@ struct Args {
 
 struct LivePaths {
     store_path: Utf8PathBuf,
-    lpi: BTreeSet<StoreHash>,
+    lpi: BTreeSet<TaggedHash<ThinTree>>,
 }
 
 impl LivePaths {
@@ -140,7 +140,7 @@ impl LivePaths {
                 continue;
             };
 
-            let h = match bp.parse::<StoreHash>() {
+            let h = match bp.parse::<TaggedHash<_>>() {
                 Ok(h) => h,
                 Err(_) => {
                     warn!("it points to a non-store-hash path, ignoring");
@@ -160,7 +160,7 @@ impl LivePaths {
         use yzix_store_builder::store_refs::Extract;
 
         fn read_proc_link(
-            extractor: &mut Extract<'_>,
+            extractor: &mut Extract<'_, ThinTree>,
             xpath: &std::path::Path,
         ) -> std::io::Result<()> {
             let x = std::fs::read_link(xpath)?;
@@ -298,7 +298,7 @@ fn main() -> std::io::Result<()> {
         );
 
         // don't warn about this, e.g. all realisations are catched here...
-        let h = handlerr!(bn.parse::<StoreHash>(), _, {});
+        let h = handlerr!(bn.parse::<TaggedHash<ThinTree>>(), _, {});
 
         if lp.lpi.contains(&h) {
             if !dry_run {

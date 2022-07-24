@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use tracing::{error, info};
 use yzix_client::{
-    Driver, OutputName, Regular, StoreHash, TaskBoundResponse as Tbr, ThinTree, WorkItem,
+    Driver, OutputName, Regular, StoreHash, TaggedHash, TaskBoundResponse as Tbr, ThinTree,
+    WorkItem,
 };
 
 async fn my_fetch(url: &str) -> Result<Vec<u8>, reqwest::Error> {
@@ -55,8 +56,8 @@ async fn fetchurl(
     expect_hash: &str,
     with_path: &str,
     executable: bool,
-) -> anyhow::Result<StoreHash> {
-    let h = expect_hash.parse::<StoreHash>().unwrap();
+) -> anyhow::Result<TaggedHash<ThinTree>> {
+    let h = expect_hash.parse::<TaggedHash<ThinTree>>().unwrap();
 
     if driver.has_out_hash(h).await {
         return Ok(h);
@@ -79,7 +80,7 @@ async fn fetchurl_wrapped(
     expect_hash: &str,
     with_path: &str,
     executable: bool,
-) -> Result<StoreHash, ()> {
+) -> Result<TaggedHash<ThinTree>, ()> {
     fetchurl(driver, url, expect_hash, with_path, executable)
         .await
         .map_err(|e| {
@@ -105,10 +106,14 @@ fn mk_envfiles(elems: Vec<(&str, ThinTree)>) -> BTreeMap<yzix_client::BaseName, 
         .collect()
 }
 
-async fn smart_upload(driver: &Driver, dump: ThinTree, name: &str) -> anyhow::Result<StoreHash> {
+async fn smart_upload(
+    driver: &Driver,
+    dump: ThinTree,
+    name: &str,
+) -> anyhow::Result<TaggedHash<ThinTree>> {
     let mut dump2 = dump.clone();
     dump2.submit_all_inlines(&mut |_, _| Ok(())).unwrap();
-    let h = StoreHash::hash_complex(&dump2);
+    let h = TaggedHash::hash_complex(&dump2);
 
     if !driver.has_out_hash(h).await {
         let x = driver.upload(dump).await;
@@ -123,9 +128,13 @@ async fn smart_upload(driver: &Driver, dump: ThinTree, name: &str) -> anyhow::Re
 async fn gen_wrappers(
     driver: &Driver,
     store_path: &str,
-    bootstrap_tools: StoreHash,
-) -> anyhow::Result<StoreHash> {
-    fn gen_wrapper(store_path: &str, bootstrap_tools: StoreHash, element: &str) -> ThinTree {
+    bootstrap_tools: TaggedHash<ThinTree>,
+) -> anyhow::Result<TaggedHash<ThinTree>> {
+    fn gen_wrapper(
+        store_path: &str,
+        bootstrap_tools: TaggedHash<ThinTree>,
+        element: &str,
+    ) -> ThinTree {
         ThinTree::RegularInline(Regular {
             executable: true,
             contents: format!(
@@ -149,9 +158,10 @@ async fn gen_wrappers(
         })
         .collect();
 
-    for (from, to) in [("gcc", "cc")] {
-        dir.insert(to.to_string().try_into().unwrap(), dir[from].clone());
-    }
+    //for (from, to) in [("gcc", "cc")] {
+    //    dir.insert(to.to_string().try_into().unwrap(), dir[from].clone());
+    //}
+    dir.insert("cc".to_string().try_into().unwrap(), dir["gcc"].clone());
 
     let mut dump = ThinTree::Directory(dir);
     dump = ThinTree::Directory(
@@ -162,7 +172,7 @@ async fn gen_wrappers(
 
 #[derive(Clone)]
 struct Runner {
-    notif: tokio::sync::watch::Receiver<Result<BTreeMap<OutputName, StoreHash>, ()>>,
+    notif: tokio::sync::watch::Receiver<Result<BTreeMap<OutputName, TaggedHash<ThinTree>>, ()>>,
 }
 
 impl Runner {
@@ -214,7 +224,7 @@ impl Runner {
         Self { notif }
     }
 
-    async fn want(&mut self) -> Result<BTreeMap<OutputName, StoreHash>, ()> {
+    async fn want(&mut self) -> Result<BTreeMap<OutputName, TaggedHash<ThinTree>>, ()> {
         let _ = self.notif.changed().await.is_ok();
         self.notif.borrow_and_update().clone()
     }

@@ -17,7 +17,8 @@ use tokio::task::{block_in_place, spawn_blocking};
 use tracing::{debug, error, span, trace, warn, Level};
 use tracing_futures::Instrument as _;
 use yzix_core::{
-    DumpFlags, Regular, StoreError, StoreHash, TaggedHash, TaskBoundResponse, ThinTree,
+    DumpFlags, Regular, StoreError, StoreErrorKind, StoreHash, TaggedHash, TaskBoundResponse,
+    ThinTree,
 };
 
 mod fwi;
@@ -32,34 +33,47 @@ pub mod store_refs;
 pub const INPUT_REALISATION_DIR_POSTFIX: &str = ".in";
 pub const CAFILE_SUBDIR_NAME: &str = ".links";
 
-pub type TaskId = StoreHash;
+pub type TaskId = TaggedHash<yzix_core::WorkItem>;
+
+pub enum OnObject<T> {
+    Upload {
+        answ_chan: oneshot::Sender<Result<(), StoreError>>,
+        hash: TaggedHash<T>,
+        data: T,
+    },
+    Download {
+        answ_chan: oneshot::Sender<Result<T, StoreError>>,
+        hash: TaggedHash<T>,
+    },
+    // TODO: streaming downloads
+    IsPresent {
+        answ_chan: oneshot::Sender<bool>,
+        hash: TaggedHash<T>,
+    },
+}
+
+impl<T: yzix_core::Serialize> fmt::Display for OnObject<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Upload { data, .. } => write!(f, "Upload(..@ {})", StoreHash::hash_complex(data)),
+            Self::Download { hash, .. } => write!(f, "Download({})", hash.as_ref()),
+            Self::IsPresent { hash, .. } => write!(f, "IsPresent({})", hash.as_ref()),
+        }
+    }
+}
 
 pub enum ControlMessage {
     Kill {
-        task_id: TaskId,
         answ_chan: oneshot::Sender<bool>,
+        task_id: TaskId,
     },
     SubmitTask {
+        answ_chan: oneshot::Sender<TaskId>,
         item: yzix_core::WorkItem,
         subscribe: Option<mpsc::Sender<(TaskId, Arc<TaskBoundResponse>)>>,
-        answ_chan: oneshot::Sender<TaskId>,
     },
-    Upload {
-        dump: ThinTree,
-        answ_chan: oneshot::Sender<Result<(), StoreError>>,
-    },
-    HasOutHash {
-        outhash: StoreHash,
-        answ_chan: oneshot::Sender<bool>,
-    },
-    Download {
-        outhash: StoreHash,
-        answ_chan: oneshot::Sender<Result<ThinTree, StoreError>>,
-    },
-    DownloadRegular {
-        outhash: TaggedHash<Regular>,
-        answ_chan: oneshot::Sender<Result<Regular, StoreError>>,
-    },
+    OnRegular(OnObject<Regular>),
+    OnThinTree(OnObject<ThinTree>),
 }
 
 impl fmt::Display for ControlMessage {
@@ -70,14 +84,8 @@ impl fmt::Display for ControlMessage {
                 item, subscribe, ..
             } if subscribe.is_some() => write!(f, "SubmitTask+log({:?})", item),
             Self::SubmitTask { item, .. } => write!(f, "SubmitTask({:?})", item),
-            Self::Upload { dump, .. } => {
-                write!(f, "Upload(..@ {})", StoreHash::hash_complex(dump))
-            }
-            Self::HasOutHash { outhash, .. } => write!(f, "HasOutHash({})", outhash),
-            Self::Download { outhash, .. } => write!(f, "Download({})", outhash),
-            Self::DownloadRegular { outhash, .. } => {
-                write!(f, "DownloadRegular({})", outhash.as_ref())
-            }
+            Self::OnRegular(x) => write!(f, "Regular:{}", x),
+            Self::OnThinTree(x) => write!(f, "ThinTree:{}", x),
         }
     }
 }
@@ -105,13 +113,13 @@ struct Env {
     cache_store_refs: std::sync::Mutex<store_refs::Cache>,
 
     // outhash-locking, to prevent racing in the store
-    store_locks: std::sync::Mutex<HashSet<StoreHash>>,
+    store_locks: std::sync::Mutex<HashSet<TaggedHash<ThinTree>>>,
 
     // outhash-locking for the non-tree part
     store_cafiles_locks: std::sync::Mutex<HashSet<TaggedHash<Regular>>>,
 
     // inhash-locking, to prevent racing a workitem with itself
-    tasks: tokio::sync::Mutex<BTreeMap<StoreHash, Task>>,
+    tasks: tokio::sync::Mutex<BTreeMap<TaskId, Task>>,
 }
 
 struct Task {
@@ -194,6 +202,17 @@ fn register_cafile(
     ret
 }
 
+fn run_detached<R, F>(answ_chan: oneshot::Sender<R>, f: F)
+where
+    R: Send + 'static,
+    F: FnOnce() -> R + Send + 'static,
+{
+    spawn_blocking(move || {
+        let res = f();
+        let _ = answ_chan.send(res).is_err();
+    });
+}
+
 // this function is split out from the main loop to prevent too much right-ward drift
 // and make the code easier to read.
 async fn handle_submit_task(
@@ -257,7 +276,7 @@ async fn handle_submit_task(
                     tokio::task::spawn_blocking(move || {
                         let mut ret = BTreeMap::new();
                         for (outname, (outhash, dump)) in x {
-                            let realhash = StoreHash::hash_complex::<ThinTree>(&dump);
+                            let realhash = TaggedHash::<ThinTree>::hash_complex(&dump);
                             let span = span!(Level::ERROR, "output", %outname, %outhash, %realhash);
                             let _guard = span.enter();
                             let realdstpath = parent
@@ -457,29 +476,129 @@ pub async fn main(
                 }
                 let _ = answ_chan.send(inhash).is_err();
             }
-            Cm::Upload {
-                mut dump,
-                answ_chan,
-            } => {
-                let env = env.clone();
-                spawn_blocking(move || {
-                    // this would be much nicer if we had try-blocks...
-                    let res = if let Err(e) = dump.submit_all_inlines(&mut |rh, regu| {
-                        register_cafile(&env.store_path, &env.store_cafiles_locks, rh, regu)
-                    }) {
-                        Err(e)
-                    } else {
-                        let h = StoreHash::hash_complex::<ThinTree>(&dump);
-                        if !env.store_locks.lock().unwrap().insert(h) {
-                            // maybe return ResourceBusy when rust#86442 is fixed/stable
-                            Ok(())
-                        } else {
-                            let p = env.store_path.join(h.to_string());
-                            let ret = if p.exists() {
+            Cm::OnRegular(xregu) => {
+                match xregu {
+                    OnObject::IsPresent { answ_chan, hash } => {
+                        let _ = answ_chan
+                            .send((mk_request_cafile(&env.store_path))(hash).unwrap().exists())
+                            .is_err();
+                    }
+                    OnObject::Upload {
+                        answ_chan,
+                        data,
+                        hash,
+                    } => {
+                        let env = env.clone();
+                        run_detached(answ_chan, move || {
+                            let h = TaggedHash::<Regular>::hash_complex(&data);
+                            let real_path = (mk_request_cafile(&env.store_path))(h).unwrap();
+                            if h != hash {
+                                return Err(StoreError {
+                                    real_path,
+                                    kind: StoreErrorKind::HashMismatch,
+                                });
+                            }
+                            if !env.store_cafiles_locks.lock().unwrap().insert(h) {
+                                Err(StoreError {
+                                    real_path,
+                                    kind: std::io::Error::new(
+                                        std::io::ErrorKind::WouldBlock,
+                                        "path is currently locked",
+                                    )
+                                    .into(),
+                                })
+                            } else {
+                                let res = if real_path.exists() {
+                                    // TODO: auto repair
+                                    Ok(())
+                                } else {
+                                    Regular::write_to_path(
+                                        &data,
+                                        &real_path,
+                                        yzix_core::RegularFlags {
+                                            skip_write: false,
+                                            make_readonly: true,
+                                        },
+                                    )
+                                };
+                                env.store_cafiles_locks.lock().unwrap().remove(&h);
+                                res
+                            }
+                        });
+                    }
+                    OnObject::Download { answ_chan, hash } => {
+                        let env = env.clone();
+                        run_detached(answ_chan, move || {
+                            let real_path = (mk_request_cafile(&env.store_path))(hash).unwrap();
+                            if !matches!(
+                                env.store_cafiles_locks.lock().map(|i| i.contains(&hash)),
+                                Ok(false)
+                            ) {
+                                Err(StoreError {
+                                    real_path,
+                                    kind: std::io::Error::new(
+                                        std::io::ErrorKind::WouldBlock,
+                                        "path is currently locked",
+                                    )
+                                    .into(),
+                                })
+                            } else {
+                                std::fs::symlink_metadata(&real_path)
+                                    .map_err(|e| StoreError {
+                                        real_path: real_path.clone(),
+                                        kind: e.into(),
+                                    })
+                                    .and_then(|meta| Regular::read_from_path(&real_path, &meta))
+                            }
+                        });
+                    }
+                }
+            }
+            Cm::OnThinTree(xtt) => {
+                match xtt {
+                    OnObject::IsPresent { answ_chan, hash } => {
+                        let _ = answ_chan
+                            .send(env.store_path.join(hash.to_string()).exists())
+                            .is_err();
+                    }
+                    OnObject::Upload {
+                        answ_chan,
+                        hash,
+                        mut data,
+                    } => {
+                        let env = env.clone();
+                        run_detached(answ_chan, move || {
+                            // this would be much nicer if we had try-blocks...
+                            data.submit_all_inlines(&mut |rh, regu| {
+                                register_cafile(&env.store_path, &env.store_cafiles_locks, rh, regu)
+                            })?;
+
+                            let h = TaggedHash::<ThinTree>::hash_complex(&data);
+                            let real_path = env.store_path.join(h.to_string()).into_std_path_buf();
+
+                            if h != hash {
+                                return Err(StoreError {
+                                    real_path,
+                                    kind: StoreErrorKind::HashMismatch,
+                                });
+                            }
+
+                            if !env.store_locks.lock().unwrap().insert(h) {
+                                // maybe return ResourceBusy when rust#86442 is fixed/stable
+                                return Err(StoreError {
+                                    real_path,
+                                    kind: std::io::Error::new(
+                                        std::io::ErrorKind::WouldBlock,
+                                        "path is currently locked",
+                                    )
+                                    .into(),
+                                });
+                            }
+                            let ret = if real_path.exists() {
                                 // TODO: auto repair
                                 Ok(())
-                            } else if let Err(e) = dump.write_to_path(
-                                p.as_std_path(),
+                            } else if let Err(e) = data.write_to_path(
+                                &real_path,
                                 DumpFlags {
                                     force: false,
                                     make_readonly: true,
@@ -492,71 +611,38 @@ pub async fn main(
                             };
                             env.store_locks.lock().unwrap().remove(&h);
                             ret
-                        }
-                    };
-                    let _ = answ_chan.send(res).is_err();
-                });
-            }
-            Cm::HasOutHash { outhash, answ_chan } => {
-                let _ = answ_chan
-                    .send(env.store_path.join(outhash.to_string()).exists())
-                    .is_err();
-            }
-            Cm::Download { outhash, answ_chan } => {
-                let env = env.clone();
-                spawn_blocking(move || {
-                    // if something currently tries to insert the path, we can't download it yet.
-                    let real_path = env.store_path.join(outhash.to_string()).into_std_path_buf();
-                    let res = if !matches!(
-                        env.store_locks.lock().map(|i| i.contains(&outhash)),
-                        Ok(false)
-                    ) {
-                        Err(StoreError {
-                            real_path,
-                            kind: std::io::Error::new(
-                                std::io::ErrorKind::WouldBlock,
-                                "path is currently locked",
-                            )
-                            .into(),
-                        })
-                    } else {
-                        let rqcf = mk_request_cafile(&env.store_path);
-                        ThinTree::read_from_path(&real_path, &mut |rh, regu| {
-                            if rqcf(rh).map(|i| i.exists()) == Ok(true) {
-                                Ok(())
-                            } else {
-                                Err(yzix_core::ThinTreeSubmitError::StoreLoop(regu))
+                        });
+                    }
+                    OnObject::Download { answ_chan, hash } => {
+                        let env = env.clone();
+                        run_detached(answ_chan, move || {
+                            // if something currently tries to insert the path, we can't download it yet.
+                            let real_path =
+                                env.store_path.join(hash.to_string()).into_std_path_buf();
+                            if !matches!(
+                                env.store_locks.lock().map(|i| i.contains(&hash)),
+                                Ok(false)
+                            ) {
+                                return Err(StoreError {
+                                    real_path,
+                                    kind: std::io::Error::new(
+                                        std::io::ErrorKind::WouldBlock,
+                                        "path is currently locked",
+                                    )
+                                    .into(),
+                                });
                             }
-                        })
-                    };
-                    let _ = answ_chan.send(res).is_err();
-                });
-            }
-            Cm::DownloadRegular { outhash, answ_chan } => {
-                let real_path = (mk_request_cafile(&env.store_path))(outhash).unwrap();
-                let res = if !matches!(
-                    env.store_cafiles_locks.lock().map(|i| i.contains(&outhash)),
-                    Ok(false)
-                ) {
-                    Err(StoreError {
-                        real_path,
-                        kind: std::io::Error::new(
-                            std::io::ErrorKind::WouldBlock,
-                            "path is currently locked",
-                        )
-                        .into(),
-                    })
-                } else {
-                    tokio::task::block_in_place(|| {
-                        let meta =
-                            std::fs::symlink_metadata(&real_path).map_err(|e| StoreError {
-                                real_path: real_path.clone(),
-                                kind: e.into(),
-                            })?;
-                        Regular::read_from_path(&real_path, &meta)
-                    })
-                };
-                let _ = answ_chan.send(res).is_err();
+                            let rqcf = mk_request_cafile(&env.store_path);
+                            ThinTree::read_from_path(&real_path, &mut |rh, regu| {
+                                if rqcf(rh).map(|i| i.exists()) == Ok(true) {
+                                    Ok(())
+                                } else {
+                                    Err(yzix_core::ThinTreeSubmitError::StoreLoop(regu))
+                                }
+                            })
+                        });
+                    }
+                }
             }
         }
     }

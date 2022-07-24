@@ -10,6 +10,15 @@ tracing = "0.1"
 version = "0.3"
 features = ["sink"]
 
+[dependencies.hyper]
+version = "0.14"
+features = [
+  "client",
+  "http2",
+  "runtime",
+  "tcp"
+]
+
 [dependencies.tokio]
 version = "1.20"
 features = [

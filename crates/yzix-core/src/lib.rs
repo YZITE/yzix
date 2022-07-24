@@ -30,8 +30,7 @@ use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub enum TaskBoundResponse {
-    Queued,
-    BuildSuccess(BTreeMap<OutputName, StoreHash>),
+    BuildSuccess(BTreeMap<OutputName, TaggedHash<ThinTree>>),
     Log(String),
     BuildError(BuildError),
 }
@@ -87,6 +86,21 @@ impl From<std::io::Error> for BuildError {
     }
 }
 
+impl BuildError {
+    pub fn errtype(&self) -> String {
+        match self {
+            BuildError::KilledByClient => "killed.by.client".to_string(),
+            BuildError::Exit(i) => format!("exit.{}", i),
+            BuildError::Killed(i) => format!("killed.by.signal.{}", i),
+            BuildError::Io(i) => format!("io.{}", i),
+            BuildError::EmptyCommand => "empty.command".to_string(),
+            BuildError::HashCollision(h) => format!("hash.collision:{}", h),
+            BuildError::Store(x) => x.kind.errtype(),
+            BuildError::Unknown(_) => "unknown".to_string(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, thiserror::Error)]
 #[error("{real_path}: {kind}")]
 pub struct StoreError {
@@ -97,6 +111,9 @@ pub struct StoreError {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, thiserror::Error)]
 pub enum StoreErrorKind {
+    #[error("hash mismatch between expected hash and given data")]
+    HashMismatch,
+
     #[error("unable to convert symlink destination to UTF-8")]
     NonUtf8SymlinkTarget,
 
@@ -129,6 +146,32 @@ impl From<std::io::Error> for StoreErrorKind {
             errno: e.raw_os_error(),
             desc: e.to_string(),
         }
+    }
+}
+
+impl StoreErrorKind {
+    pub fn errtype(&self) -> String {
+        match self {
+            Self::HashMismatch => "store.hash.mismatch".to_string(),
+            Self::NonUtf8SymlinkTarget => "store.non_utf8.symlink_target".to_string(),
+            Self::NonUtf8Basename => "store.non_utf8.basename".to_string(),
+            Self::UnknownFileType(i) => format!("store.unknown.file_type:{}", i),
+            Self::InvalidBasename => "store.invalid.basename".to_string(),
+            #[cfg(not(any(unix, windows)))]
+            Self::SymlinksUnsupported => "store.unsupported.symlinks".to_string(),
+            Self::OverwriteDeclined => "store.overwrite.declined".to_string(),
+            Self::IoMisc { errno, .. } => {
+                if let Some(errno) = errno {
+                    format!("store.io.{}", errno)
+                } else {
+                    "store.io".to_string()
+                }
+            }
+        }
+    }
+
+    pub fn is_not_found(&self) -> bool {
+        matches!(self, Self::IoMisc { errno: Some(2), .. })
     }
 }
 

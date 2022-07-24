@@ -25,8 +25,8 @@ pub enum Request {
     Kill(StoreHash),
     SubmitTask { item: WorkItem, subscribe2log: bool },
     Upload(ThinTree),
-    HasOutHash(StoreHash),
-    Download(StoreHash),
+    HasOutHash(TaggedHash<ThinTree>),
+    Download(TaggedHash<ThinTree>),
     DownloadRegular(TaggedHash<Regular>),
 }
 

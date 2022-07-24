@@ -4,7 +4,7 @@ use std::{marker::Unpin, mem::drop, path::Path, sync::Arc};
 use tokio::sync::broadcast::{self, Receiver, Sender};
 use tracing::trace;
 use yzix_core::{
-    visit_bytes::Element as _, BuildError, DumpFlags, OutputName, Regular, StoreHash,
+    visit_bytes::Element as _, BuildError, DumpFlags, OutputName, Regular, StoreHash, TaggedHash,
     TaskBoundResponse, ThinTree,
 };
 
@@ -65,7 +65,7 @@ async fn build_linux_ocirt_spec(
     rootdir: &Path,
     args: Vec<String>,
     env: Vec<String>,
-    refs: BTreeSet<crate::StoreHash>,
+    refs: BTreeSet<TaggedHash<ThinTree>>,
 ) -> std::io::Result<oci_spec::runtime::Spec> {
     // NOTE: windows support is harder, because we need to use a hyperv container there...
     use oci_spec::runtime as osr;
@@ -226,7 +226,7 @@ pub async fn handle_process(
                 files,
             },
     }: crate::FullWorkItem,
-) -> Result<BTreeMap<OutputName, (StoreHash, ThinTree)>, BuildError> {
+) -> Result<BTreeMap<OutputName, (TaggedHash<ThinTree>, ThinTree)>, BuildError> {
     if args.is_empty() || args[0].is_empty() {
         return Err(BuildError::EmptyCommand);
     }
@@ -267,7 +267,8 @@ pub async fn handle_process(
     let outputs: BTreeMap<_, _> = outputs
         .into_iter()
         .map(|name| {
-            let plh = placeholder(&name);
+            // this is really unsafe, we just hope we won't have any collisions
+            let plh = TaggedHash::unsafe_cast(placeholder(&name));
             (name, plh)
         })
         .collect();
@@ -369,7 +370,7 @@ pub async fn handle_process(
                             }
                         },
                     )?;
-                    let outhash = StoreHash::hash_complex::<ThinTree>(&semitree);
+                    let outhash = TaggedHash::<ThinTree>::hash_complex(&semitree);
                     Ok::<_, yzix_core::StoreError>((i, (plh, semitree, outhash)))
                 })
             })

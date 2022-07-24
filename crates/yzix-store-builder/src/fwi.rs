@@ -1,19 +1,15 @@
 use std::collections::BTreeSet;
-use yzix_core::{StoreHash, WorkItem};
+use yzix_core::{TaggedHash, ThinTree, WorkItem};
 
 pub struct FullWorkItem {
-    pub inhash: StoreHash,
-    pub refs: BTreeSet<StoreHash>,
+    pub inhash: TaggedHash<WorkItem>,
+    pub refs: BTreeSet<TaggedHash<ThinTree>>,
     pub inner: WorkItem,
 }
 
 impl FullWorkItem {
     pub fn new(inner: WorkItem, store_path: &camino::Utf8Path) -> Self {
-        use yzix_core::Serialize as _;
-
-        let mut hasher = StoreHash::get_hasher();
-        inner.serialize(&mut hasher);
-        let inhash = StoreHash::finalize_hasher(hasher);
+        let inhash = TaggedHash::hash_complex(&inner);
         let stspec = crate::store_refs::build_store_spec(store_path);
         let mut e = crate::store_refs::Extract {
             spec: &stspec,
@@ -44,7 +40,7 @@ mod tests {
         assert_eq!(
             fwi.refs.into_iter().collect::<Vec<_>>(),
             vec!["4Zx1PBoft1YyAuKdhjAY1seZFHloxQ+8voHQRkRMuys"
-                .parse::<StoreHash>()
+                .parse::<TaggedHash<_>>()
                 .unwrap()]
         );
     }

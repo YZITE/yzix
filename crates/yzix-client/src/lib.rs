@@ -32,11 +32,11 @@ enum WorkMessage {
         answ_chan: oneshot::Sender<Response>,
     },
     HasOutHash {
-        data: StoreHash,
+        data: TaggedHash<ThinTree>,
         answ_chan: oneshot::Sender<Response>,
     },
     Download {
-        data: StoreHash,
+        data: TaggedHash<ThinTree>,
         answ_chan: oneshot::Sender<Response>,
     },
     DownloadRegular {
@@ -155,13 +155,6 @@ impl Driver {
                             Resp::TaskBound(tid, Tbr::Log(lmsg)) => {
                                 tracing::info!("{}: {}", tid, lmsg);
                             }
-                            Resp::TaskBound(tid, Tbr::Queued) => {
-                                tracing::debug!(
-                                    "{}: queued{}",
-                                    tid,
-                                    if running.contains_key(&tid) { "" } else { " (unhandled)" }
-                                );
-                            }
                             Resp::TaskBound(tid, tbr) if running.contains_key(&tid) => {
                                 let rinfo = running.remove(&tid).unwrap();
                                 tracing::debug!("{}: -> {:?}", tid, tbr);
@@ -257,7 +250,7 @@ impl Driver {
         answ_get.await.unwrap()
     }
 
-    pub async fn has_out_hash(&self, data: StoreHash) -> bool {
+    pub async fn has_out_hash(&self, data: TaggedHash<ThinTree>) -> bool {
         let (answ_chan, answ_get) = oneshot::channel();
         self.wchan_s
             .send(WorkMessage::HasOutHash { data, answ_chan })
@@ -265,7 +258,7 @@ impl Driver {
         answ_get.await.unwrap() == Response::Ok
     }
 
-    pub async fn download(&self, data: StoreHash) -> Response {
+    pub async fn download(&self, data: TaggedHash<ThinTree>) -> Response {
         let (answ_chan, answ_get) = oneshot::channel();
         self.wchan_s
             .send(WorkMessage::Download { data, answ_chan })

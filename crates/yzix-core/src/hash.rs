@@ -3,7 +3,7 @@ use blake2::{digest::consts::U32, Blake2b, Digest as _};
 use core::{cmp, convert, fmt, marker::PhantomData};
 use once_cell::sync::Lazy;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Hash(pub [u8; 32]);
 
 static B64_ALPHABET: Lazy<base64::alphabet::Alphabet> = Lazy::new(|| {
@@ -76,6 +76,19 @@ impl Hash {
     }
 }
 
+impl serde::Serialize for Hash {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if serializer.is_human_readable() {
+            self.to_string().serialize(serializer)
+        } else {
+            serializer.serialize_bytes(&self.0)
+        }
+    }
+}
+
 impl<'de> serde::Deserialize<'de> for Hash {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -145,6 +158,14 @@ impl<T: crate::Serialize> TaggedHash<T> {
             _phantom: PhantomData,
         }
     }
+
+    #[inline]
+    pub fn unsafe_cast(inner: Hash) -> Self {
+        Self {
+            inner,
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl<T> crate::Serialize for TaggedHash<T> {
@@ -172,6 +193,13 @@ impl<T> fmt::Debug for TaggedHash<T> {
     #[inline(always)]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         <Hash as fmt::Debug>::fmt(&self.inner, f)
+    }
+}
+
+impl<T> fmt::Display for TaggedHash<T> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <Hash as fmt::Display>::fmt(&self.inner, f)
     }
 }
 

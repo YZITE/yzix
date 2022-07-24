@@ -1,18 +1,17 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{error, info};
 use yzix_store_builder::{Utf8Path, Utf8PathBuf};
 
 #[derive(Debug, serde::Deserialize)]
 pub struct ServerConfig {
     store_path: Utf8PathBuf,
     container_runner: String,
-    socket_bind: String,
+    socket_bind: std::net::SocketAddr,
     bearer_tokens: HashSet<String>,
 }
 
-mod clients;
+mod route;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
@@ -73,43 +72,27 @@ async fn main() {
         std::process::exit(1);
     }
 
-    if config.socket_bind.is_empty() {
-        eprintln!("yzix-server: CONFIG ERROR: socket_bind is invalid");
-        std::process::exit(1);
-    }
-
     if config.bearer_tokens.is_empty() {
         eprintln!("yzix-server: CONFIG ERROR: bearer_tokens is empty");
         std::process::exit(1);
     }
 
-    // continue setup
-
-    // client acceptor
-
-    let listener = tokio::net::TcpListener::bind(&config.socket_bind)
-        .await
-        .expect("unable to bind socket");
+    use hyper::service::{make_service_fn, service_fn};
 
     let (client_reqs, client_reqr) = mpsc::channel(1000);
     let config2 = config.clone();
-    let jh_cla = tokio::spawn(async move {
-        loop {
-            match listener.accept().await {
-                Ok((stream, addr)) => {
-                    info!("new connection from {:?}", addr);
-                    tokio::spawn(clients::handle_client(
-                        config2.clone(),
-                        client_reqs.clone(),
-                        stream,
-                    ));
-                }
-                Err(e) => {
-                    error!("listener'accept() failed: {:?}", e);
-                }
-            }
+    let make_service = make_service_fn(move |_conn| {
+        let config2 = config2.clone();
+        let client_reqs = client_reqs.clone();
+        async move {
+            Ok::<_, core::convert::Infallible>(service_fn(move |req| {
+                route::handle_client(config2.clone(), client_reqs.clone(), req)
+            }))
         }
     });
+    let jh_httpserver = hyper::Server::bind(&config.socket_bind)
+        .serve(make_service)
+        .with_graceful_shutdown(async { tokio::signal::ctrl_c().await.unwrap() });
 
     let jh_main = tokio::spawn(yzix_store_builder::main(yzix_store_builder::Args {
         container_runner: config.container_runner.clone(),
@@ -117,9 +100,9 @@ async fn main() {
         store_path: config.store_path.clone(),
         ctrl_r: client_reqr,
     }));
-    tokio::signal::ctrl_c().await.unwrap();
+    if let Err(e) = jh_httpserver.await {
+        eprintln!("yzix-server/HTTP: {}", e);
+    }
     jh_main.abort();
-    jh_cla.abort();
-    let _ = jh_cla.await;
     let _ = jh_main.await;
 }

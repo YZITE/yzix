@@ -4,24 +4,24 @@ use std::io::{Error, ErrorKind};
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use tracing::{self, error, trace};
-use yzix_core::{OutputName, StoreHash};
+use yzix_core::{OutputName, TaggedHash, ThinTree};
 
 /// tries to resolve an input realisation 'cache' entry (`*.in` paths in the store)
 /// * `target` should be the target read via `read_link`
 /// * `super_dir` should be the expected parent of the target
-fn resolve_in2_from_target(target: PathBuf, super_dir: &Path) -> Option<StoreHash> {
+fn resolve_in2_from_target(target: PathBuf, super_dir: &Path) -> Option<TaggedHash<ThinTree>> {
     let x = target;
     if x.is_relative() && x.parent() == Some(super_dir) {
         x.file_name()
             .and_then(|x| x.to_str())
-            .and_then(|x| x.parse::<StoreHash>().ok())
+            .and_then(|x| x.parse::<TaggedHash<ThinTree>>().ok())
     } else {
         None
     }
 }
 
 /// tries to resolve an input realisation 'cache' entry (`*.in` paths in the store)
-pub fn resolve_in2(realis_path: &Path) -> BTreeMap<OutputName, StoreHash> {
+pub fn resolve_in2(realis_path: &Path) -> BTreeMap<OutputName, TaggedHash<ThinTree>> {
     if let Ok(rp) = std::fs::read_link(&realis_path) {
         resolve_in2_from_target(rp, Path::new(""))
             .map(|outhash| (OutputName::default(), outhash))
@@ -50,7 +50,7 @@ pub fn resolve_in2(realis_path: &Path) -> BTreeMap<OutputName, StoreHash> {
 
 pub fn create_in2_symlinks_bunch(
     inpath: &Path,
-    syms: &BTreeMap<OutputName, StoreHash>,
+    syms: &BTreeMap<OutputName, TaggedHash<ThinTree>>,
 ) -> std::io::Result<()> {
     let mut prev_outlink = None;
     if let Err(e) = fs::create_dir(inpath) {
@@ -107,7 +107,7 @@ pub fn create_in2_symlinks_bunch(
 }
 
 #[tracing::instrument]
-pub fn create_in2_symlinks(inpath: &Path, syms: &BTreeMap<OutputName, StoreHash>) {
+pub fn create_in2_symlinks(inpath: &Path, syms: &BTreeMap<OutputName, TaggedHash<ThinTree>>) {
     // FIXME: how to deal with conflicting hashes?
 
     // optimization, because the amount of subdirectories per directory

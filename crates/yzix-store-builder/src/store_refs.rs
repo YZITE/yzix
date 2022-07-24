@@ -3,33 +3,33 @@ use lru::LruCache;
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 use store_ref_scanner::{StoreRefScanner, StoreSpec};
-use yzix_core::{visit_bytes as yvb, StoreHash, ThinTree};
+use yzix_core::{visit_bytes as yvb, TaggedHash, ThinTree};
 
-pub struct Extract<'a> {
+pub struct Extract<'a, T> {
     pub spec: &'a StoreSpec<'a>,
-    pub refs: BTreeSet<StoreHash>,
+    pub refs: BTreeSet<TaggedHash<T>>,
 }
 
-impl yvb::Visitor for Extract<'_> {
+impl<T> yvb::Visitor for Extract<'_, T> {
     fn visit_bytes(&mut self, bytes: &[u8]) {
         self.refs.extend(
             StoreRefScanner::new(bytes, self.spec)
                 // SAFETY: we know that only ASCII chars are possible here
-                .map(|x| StoreHash::from_str(std::str::from_utf8(x).unwrap()).unwrap()),
+                .map(|x| TaggedHash::from_str(std::str::from_utf8(x).unwrap()).unwrap()),
         );
     }
 }
 
-pub struct Rewrite<'a> {
+pub struct Rewrite<'a, T> {
     pub spec: &'a StoreSpec<'a>,
-    pub rwtab: BTreeMap<StoreHash, StoreHash>,
+    pub rwtab: BTreeMap<TaggedHash<T>, TaggedHash<T>>,
 }
 
-impl<'a> yvb::VisitorMut for &'a Rewrite<'a> {
+impl<'a, T> yvb::VisitorMut for &'a Rewrite<'a, T> {
     fn visit_bytes(&mut self, bytes: &mut [u8]) {
         for i in StoreRefScanner::new(bytes, self.spec) {
             // SAFETY: we know that only ASCII chars are possible here
-            let oldhash = StoreHash::from_str(std::str::from_utf8(i).unwrap()).unwrap();
+            let oldhash = TaggedHash::from_str(std::str::from_utf8(i).unwrap()).unwrap();
             if let Some(newhash) = self.rwtab.get(&oldhash) {
                 i.copy_from_slice(newhash.to_string().as_bytes());
             }
@@ -37,17 +37,17 @@ impl<'a> yvb::VisitorMut for &'a Rewrite<'a> {
     }
 }
 
-pub struct Contains<'a> {
+pub struct Contains<'a, T> {
     pub spec: &'a StoreSpec<'a>,
-    pub refs: &'a BTreeSet<StoreHash>,
+    pub refs: &'a BTreeSet<TaggedHash<T>>,
     pub cont: bool,
 }
 
-impl<'a> yvb::Visitor for Contains<'a> {
+impl<T> yvb::Visitor for Contains<'_, T> {
     fn visit_bytes(&mut self, bytes: &[u8]) {
         for i in StoreRefScanner::new(bytes, self.spec) {
             // SAFETY: we know that only ASCII chars are possible here
-            let oldhash = StoreHash::from_str(std::str::from_utf8(i).unwrap()).unwrap();
+            let oldhash = TaggedHash::from_str(std::str::from_utf8(i).unwrap()).unwrap();
             if self.refs.contains(&oldhash) {
                 self.cont = true;
             }
@@ -67,12 +67,12 @@ pub fn build_store_spec(store_path: &Utf8Path) -> store_ref_scanner::StoreSpec<'
     }
 }
 
-pub type Cache = LruCache<StoreHash, BTreeSet<StoreHash>>;
+pub type Cache = LruCache<TaggedHash<ThinTree>, BTreeSet<TaggedHash<ThinTree>>>;
 
 pub fn determine_store_closure(
     store_path: &Utf8Path,
     cache: &mut Cache,
-    refs: &mut BTreeSet<StoreHash>,
+    refs: &mut BTreeSet<TaggedHash<ThinTree>>,
 ) {
     let stspec = build_store_spec(store_path);
     let mut new_refs = std::mem::take(refs);
