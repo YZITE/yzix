@@ -1,0 +1,25 @@
+// seed
+// default with_name=""
+// default executable=false
+// predefined object: __store_path
+
+(fetchurl)busybox \
+	url="http://tarballs.nixos.org/stdenv-linux/i686/4907fc9e8d0d82b28b3c56e3a478a2882f1d700f/busybox" \
+	expect_hash="liAXAxlPQSRlEjqQFgoewxVmQTv73rfukUCyyPZfsKI" \
+	with_name="busybox" \
+	executable=true
+
+(fetchurl)bootstrap_tools \
+	url="http://tarballs.nixos.org/stdenv-linux/x86_64/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz" \
+	expect_hash="ox+VaXgaAFWqqqHhxq7WwHHUdkg76x8dO3EDvlCas8U"
+
+(fetchurl)unpack_bootstrap_tools \
+	url="https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/stdenv/linux/bootstrap-tools/scripts/unpack-bootstrap-tools.sh" \
+	expect_hash="ow8ctEPXY74kphwpR0SAb2fIbZ7FmFr8EnxmPH80_sY"
+
+(alias)bb "${__store_path}/${busybox}/busybox"
+
+(derivation)bootstrap_tools {
+	envs builder="${bb}" tarball="${__store_path}/${bootstrap_tools}"
+	args "${bb}" "ash" "-e" "${__store_path}/${unpack_bootstrap_tools}"
+}

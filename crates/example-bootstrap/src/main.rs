@@ -1,10 +1,36 @@
 use indoc::indoc;
+use petgraph::stable_graph::StableGraph;
 use std::collections::{BTreeMap, BTreeSet};
+use std::future::Future;
 use std::sync::Arc;
 use tracing::{error, info};
 use yzix_client::{
     Driver, OutputName, Regular, StoreHash, TaskBoundResponse as Tbr, ThinTree, WorkItem,
 };
+
+#[derive(Clone, Debug)]
+enum ObjectAction {
+    Alias(String),
+    Fetchurl {
+        url: String,
+        expect_hash: String,
+        with_name: String,
+        executable: bool,
+    },
+    Derivation {
+        envs: BTreeMap<String, String>,
+        args: Vec<String>,
+        outputs: BTreeHash<OutputName>,
+        files: BTreeMap<yzix_client::BaseName, ThinTree>,
+    },
+}
+
+struct Object {
+    name: String,
+    action: ObjectAction,
+}
+
+type Graph = StableGraph<Object, String>;
 
 async fn my_fetch(url: &str) -> Result<Vec<u8>, reqwest::Error> {
     Ok(reqwest::get(url).await?.bytes().await?.as_ref().to_vec())
@@ -156,6 +182,8 @@ async fn gen_wrappers(
     smart_upload(driver, dump, "genWrappers").await
 }
 
+type MaybeOutputs = Result<BTreeMap<OutputName, StoreHash>, ()>;
+
 #[derive(Clone)]
 struct Runner {
     notif: tokio::sync::watch::Receiver<Result<BTreeMap<OutputName, StoreHash>, ()>>,
@@ -216,6 +244,66 @@ impl Runner {
     }
 }
 
+fn build_graph_from_kdl(s: &str) -> Graph {
+    let objs = s.parse::<kdl::KdlDocument>()
+        .expect("unable to parse stage description");
+
+    let objs = objs.into_iter()
+        .map(|i| {
+            let k = i.name().value().to_string();
+            let v = match i.ty().unwrap_or_else(|| panic!("node {:?} without type", k)).value() {
+                "alias" => {
+                    if let Some(kdl::KdlValue::String(x) = i.get(0) {
+                        ObjectAction::Alias(x.to_string())
+                    } else {
+                        panic!("node {:?} with wrong arguments", k);
+                    }
+                }
+                "fetchurl" => {
+                    ObjectAction::Fetchurl {
+                        url: i.get("url").expect("no url given").as_string().unwrap().to_string(),
+                        expect_hash: i.get("expect_hash").expect("no hash given").as_string().unwrap().to_string(),
+                        with_name: i.get("with_name").map(|j| j.as_string().unwrap()).unwrap_or("").to_string(),
+                        executable: i.get("executable").map(|j| j.as_bool().unwrap()).unwrap_or(false),
+                    }
+                }
+                "derivation" => {
+                    let derivspec = i.children().unwrap_or_else(|| panic!("node {:?} without children", k));
+                    let args = derivspec.get("args").unwrap().entries().iter().map(|j| j.value().as_string().unwrap().to_string()).collect();
+                    let envs = derivspec.get("envs").into_iter().flat_map(|j| j.entries()).map(|j|
+                        (j.name().unwrap().value().to_string(),
+                          j.value().as_string().unwrap().to_string()
+                        ))
+                        .collect();
+                    let mut outputs = derivspec.get("outputs").into_iter().flat_map(|j| j.entries()).map(|j|
+                            j.value().as_string().unwrap().to_string()
+                        )
+                        .map(|j| OutputName::new(j).unwrap())
+                        .collect();
+                    if outputs.is_empty() {
+                        outputs.push(OutputName::default());
+                    }
+                    let files = derivspec.get("files").and_then(|j| j.children())
+                        .into_iter()
+                        .flat_map(|j| j.nodes())
+                        .map(|j| {
+                            
+                        })
+                        .collect();
+                    ObjectAction::Derivation {
+                        args,
+                        envs,
+                        outputs,
+                        files,
+                    }
+                }
+                t => panic!("node {:?} with unknown type {:?}", k, t),
+            };
+            (k, v)
+        })
+        .collect();
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     /* === environment setup === */
@@ -235,9 +323,10 @@ async fn main() -> anyhow::Result<()> {
         .expect("unable to send authentication info to yzix server");
     let driver = Driver::new(stream).await;
 
-    /* === seed === */
-
     let store_path = Arc::new(driver.store_path().await);
+
+    // load stage0 description
+    let stage0 = build_tree_from_kdl(include_str!("stage0/objs.kdl"));
 
     let h_busybox = fetchurl(
         &driver,
