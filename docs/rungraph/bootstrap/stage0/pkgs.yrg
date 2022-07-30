@@ -1,0 +1,28 @@
+[busybox]
+url = "http://tarballs.nixos.org/stdenv-linux/i686/4907fc9e8d0d82b28b3c56e3a478a2882f1d700f/busybox"
+hash = "liAXAxlPQSRlEjqQFgoewxVmQTv73rfukUCyyPZfsKI"
+with_path = "busybox"
+executable = true
+
+[bootstrap_tools]
+url = "http://tarballs.nixos.org/stdenv-linux/x86_64/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz"
+hash = "ox+VaXgaAFWqqqHhxq7WwHHUdkg76x8dO3EDvlCas8U"
+
+[unpack_bootstrap_tools]
+url = "https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/stdenv/linux/bootstrap-tools/scripts/unpack-bootstrap-tools.sh"
+hash = "ow8ctEPXY74kphwpR0SAb2fIbZ7FmFr8EnxmPH80_sY"
+executable = true
+
+[bootstrap_tools]
+args = ["{busybox}/busybox", "ash", "-e", "{unpack_bootstrap_tools}"]
+
+[bootstrap_tools.envs]
+builder = "{busybox}/busybox"
+tarball = "{bootstrap_tools}"
+
+[wrappers]
+args = ["{busybox}/busybox", "ash", "-e", "{./mkwrappers.sh}"]
+
+[wrappers.envs]
+builder = "{busybox}/busybox"
+bootstrap_tools = "{bootstrap_tools}"
