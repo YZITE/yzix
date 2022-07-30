@@ -145,7 +145,7 @@ async fn gen_wrappers(
         })
         .collect();
 
-    for (from, to) in [("gcc", "cc"), ("g++", "cpp"), ("g++", "cxx")] {
+    for (from, to) in [("gcc", "cc")] {
         dir.insert(to.to_string().try_into().unwrap(), dir[from].clone());
     }
 
