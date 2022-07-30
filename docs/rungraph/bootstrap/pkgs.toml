@@ -1,0 +1,193 @@
+[s0_busybox]
+url = "http://tarballs.nixos.org/stdenv-linux/i686/4907fc9e8d0d82b28b3c56e3a478a2882f1d700f/busybox"
+hash = "liAXAxlPQSRlEjqQFgoewxVmQTv73rfukUCyyPZfsKI"
+with_path = "busybox"
+executable = true
+
+[s0_src_bootstrap_tools]
+url = "http://tarballs.nixos.org/stdenv-linux/x86_64/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz"
+hash = "ox+VaXgaAFWqqqHhxq7WwHHUdkg76x8dO3EDvlCas8U"
+
+[s0_unpack_bootstrap_tools]
+url = "https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/stdenv/linux/bootstrap-tools/scripts/unpack-bootstrap-tools.sh"
+hash = "ow8ctEPXY74kphwpR0SAb2fIbZ7FmFr8EnxmPH80_sY"
+executable = true
+
+[s0_bootstrap_tools]
+args = ["`s0_busybox`/busybox", "ash", "-e", "`s0_unpack_bootstrap_tools`"]
+
+[s0_bootstrap_tools.envs]
+builder = "`s0_busybox`/busybox"
+tarball = "`s0_src_bootstrap_tools`"
+
+[s0_wrappers]
+args = ["`s0_busybox`/busybox", "ash", "-e", "`<./stage0/mkwrappers.sh`"]
+
+[s0_wrappers.envs]
+builder = "`s0_busybox`/busybox"
+bootstrap_tools = "`s0_bootstrap_tools`"
+
+[src_linux]
+url = "https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.16.tar.xz"
+hash = "Z6afPd9StYWqNcEaB6Ax1kXor6pZilBRHLRvKD+GWjM"
+
+[src_binutils]
+url = "http://ftp.gnu.org/gnu/binutils/binutils-2.37.tar.xz"
+hash = "pR3S4OOkDJr_Xl58nSnQIt_Og45RwvizPKi17rC8r9w"
+
+[src_binutils_asrp]
+url = "https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/development/tools/misc/binutils/always-search-rpath.patch"
+hash = "b6JXhg+NKc2idFHC_4PkO5LjYeKH+gsI1rDa0BUdX+Q"
+
+[src_gnum4]
+url = "http://ftp.gnu.org/gnu/m4/m4-1.4.19.tar.xz"
+hash = "i0KjpKfM4RbyXz26vY41jdKIh6jpczykXCcw1_9hzxw"
+
+[src_gmp]
+url = "http://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.xz"
+hash = "BN+S1KcfEM_ZyazWQAwkutnISAcxQmcYhhEqRyDw5wo"
+
+[src_mpfr]
+url = "http://ftp.gnu.org/gnu/mpfr/mpfr-4.1.0.tar.xz"
+hash = "I0xvlGlSGYy8EdaENBtjFJjiaYuaRw8FB5VWp5d4eJY"
+
+[src_mpc]
+url = "http://ftp.gnu.org/gnu/mpc/mpc-1.2.1.tar.gz"
+hash = "OBypmXEnvXlpemFyE3vYcCRTOY9gKchO9ePiBhw5Qhk"
+
+[src_gcc]
+url = "http://ftp.gnu.org/gnu/gcc/gcc-10.2.0/gcc-10.2.0.tar.gz"
+hash = "pNeH0nV0lik1G7Ze5zKjKw8SJKdDCH8TIDIRIJUu3fA"
+
+[src_perl]
+url = "https://www.cpan.org/src/5.0/perl-5.34.1.tar.gz"
+hash = "B7Y8Fp6JaYxNBStTLlc5oiQaJDAAcBGPpr9lSP5lOpo"
+
+[src_python3_10]
+url = "https://www.python.org/ftp/python/3.10.4/Python-3.10.4.tar.xz"
+hash = "6Di_C2g+y4lPVFZqBRpXCxy72RVETQrzZO3DNkKeNOY"
+
+[src_python3_10_no_ldconfig]
+url = "https://raw.githubusercontent.com/NixOS/nixpkgs/9fc849704f9cb8baba7b3a30cceac00a448d9a53/pkgs/development/interpreters/python/cpython/3.10/no-ldconfig.patch"
+hash = "x77POldOugPGqVp_LemeMH2xfclFeN47Rz_33LA64wE"
+
+[src_glibc]
+url = "http://ftp.gnu.org/gnu/glibc/glibc-2.34.tar.xz"
+hash = "731BEx5ziNAm0RC2CbGB5Qut2nLN_Lipp_SggSNR9WQ"
+
+[buildsh]
+args = ["`s0_bootstrap_tools`/bin/bash", "`./mkbuildsh.sh`", "`./mkDerivation-builder.sh`"]
+
+[buildsh.envs]
+bootstrap_tools = "`s0_bootstrap_tools`"
+wrappers = "`s0_wrappers`"
+
+[linux_kernel_headers]
+args = ["`buildsh`", "/build/build.sh"]
+
+[linux_kernel_headers.envs]
+src = "`src_linux`"
+
+[linux_kernel_headers.files]
+"build.sh" = "buildscript-kernel-headers.sh"
+
+[binutils_patches]
+args = ["`s0_bootstrap_tools`/bin/bash", "-e", "printf '%s\n' `src_binutils_asrp` > $out"]
+
+[binutils]
+args = ["`buildsh`", "/build/build.sh"]
+
+[binutils.envs]
+src = "`src_binutils`"
+
+[binutils.files]
+"build.sh" = "binutils_script.sh"
+patches = "`binutils_patches`"
+
+[gnum4]
+args = ["`buildsh`", "`<./gnu-generic.sh`"]
+
+[gnum4.envs]
+src = "`src_gnum4`"
+
+[gmp]
+args = ["`buildsh`", "`<./gnu-generic.sh`"]
+
+[gmp.envs]
+src = "`src_gmp`"
+buildInputs = "`gnum4`"
+
+[mpfr]
+args = ["`buildsh`", "`<./gnu-generic.sh`"]
+
+[mpfr.envs]
+src = "`src_mpfr`"
+buildInputs = "`gmp`"
+
+[mpc]
+args = ["`buildsh`", "`<./gnu-generic.sh`"]
+
+[mpc.envs]
+src = "`src_mpc`"
+buildInputs = "`gmp`"
+
+[gcc]
+args = ["`buildsh`", "/build/build.sh"]
+
+[gcc.envs]
+src = "`src_gcc`"
+buildInputs = "`binutils` `gmp` `mpfr` `mpc`"
+
+[gcc.files]
+"build.sh" = "buildscript-gcc.sh"
+
+[perl]
+args = ["`buildsh`", "/build/build.sh"]
+
+[perl.envs]
+src = "`src_perl`"
+buildInputs = "`binutils`"
+
+[perl.files]
+"build.sh" = "buildscript-perl.sh"
+
+[bison]
+args = ["`buildsh`", "`<./gnu-generic.sh`"]
+
+[bison.envs]
+src = "`src_bison`"
+buildInputs = "`binutils` `gnum4` `perl`"
+
+[python3_10_patches]
+args = ["`s0_bootstrap_tools`/bin/bash", "-e", "printf '%s\n' `src_python3_10_no_ldconfig` > $out"]
+
+[python3_10]
+args = ["`buildsh`", "/build/build.sh"]
+
+[python3_10.envs]
+src = "`src_python3_10`"
+buildInputs = "`binutils`"
+LIBS = "-lcrypt"
+PYTHONHASHSEED = "0"
+CFLAGS_NODIST = "-fno-semantic-interposition"
+libPrefix = "python3.10"
+
+[python3_10.files]
+"build.sh" = "buildscript-python3.10.sh"
+"patches" = "`python3_10_patches`"
+
+[glibc_builder]
+args = ["`s0_bootstrap_tools`/bin/bash", "`./mkbuildsh.sh`", "`./buildscript-glibc.sh`"]
+
+[glibc_builder.envs]
+bootstrap_tools = "`s0_bootstrap_tools`"
+wrappers = "`s0_wrappers`"
+
+[glibc]
+args = ["`glibc_builder`"]
+
+[glibc.envs]
+src = "`src_glibc`"
+gcc = "`gcc`"
+buildInputs = "`binutils` `bison` `python3_10`"
+lnxheaders = "`linux_kernel_headers`"
