@@ -651,7 +651,11 @@ async fn main() -> anyhow::Result<()> {
 
     let perl_script = indoc! {"
         set -xe
+        unset src
         sh Configure -des                                    \\
+            -Dusedevel                                       \\
+            -Uversiononly                                    \\
+            -Dusethreads                                     \\
             -Dprefix=\"$out\"                                \\
             -Dvendorprefix=\"$out\"                          \\
             -Dprivlib=\"$out\"/lib/perl5/5.34/core_perl      \\
