@@ -49,7 +49,9 @@ async fn main() {
         }
     }
 
-    let h = StoreHash::hash_complex(&dump);
+    let mut dump2 = dump.clone();
+    dump2.submit_all_inlines(&mut |_, _| Ok(())).unwrap();
+    let h = StoreHash::hash_complex(&dump2);
     println!("hash = {}", h);
 
     if driver.has_out_hash(h).await {

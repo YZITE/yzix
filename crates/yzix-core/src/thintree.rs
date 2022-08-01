@@ -99,6 +99,28 @@ impl yvb::Element for ThinTree {
 }
 
 impl ThinTree {
+    pub fn submit_all_inlines<Fs>(&mut self, submit: &mut Fs) -> Result<(), Error>
+    where
+        Fs: FnMut(TaggedHash<Regular>, Regular) -> Result<(), Error>,
+    {
+        match self {
+            Self::RegularInline(regu) => {
+                let h = TaggedHash::hash_complex(regu);
+                let regu =
+                    if let Self::RegularInline(regu) = core::mem::replace(self, Self::Regular(h)) {
+                        regu
+                    } else {
+                        unreachable!();
+                    };
+                submit(h, regu)
+            }
+            Self::Directory(d) => d
+                .values_mut()
+                .try_for_each(|i| i.submit_all_inlines(submit)),
+            _ => Ok(()),
+        }
+    }
+
     /// read a thin tree from a path,
     /// submit all encountered regular files via `submit`
     pub fn read_from_path<Fs>(x: &Path, submit: &mut Fs) -> Result<Self, Error>

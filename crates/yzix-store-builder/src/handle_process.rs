@@ -387,6 +387,11 @@ pub async fn handle_process(
                 v.accept_mut(&mut &rwtr);
             }
         }
+        outputs.values_mut().try_for_each(|(_, i, _)| {
+            i.submit_all_inlines(&mut |rh, regu: Regular| {
+                crate::register_cafile(store_path, &env.store_cafiles_locks, rh, regu)
+            })
+        })?;
         Ok(outputs
             .into_iter()
             .map(|(k, (_, v, h))| (k, (h, v)))

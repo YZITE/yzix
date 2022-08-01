@@ -107,7 +107,10 @@ pub async fn handle_client(
                 }
                 Req::Upload(dump) => {
                     let (answ_chan, answ_recv) = oneshot::channel();
-                    let outhash = StoreHash::hash_complex(&dump);
+                    let mut dump2 = dump.clone();
+                    dump2.submit_all_inlines(&mut |_, _| Ok(())).unwrap();
+                    let outhash = StoreHash::hash_complex(&dump2);
+                    core::mem::drop(dump2);
                     let resp_s = resp_s.clone();
                     let _ = tokio::spawn(async move {
                         resp_s

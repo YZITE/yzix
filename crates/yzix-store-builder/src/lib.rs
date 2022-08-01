@@ -457,33 +457,42 @@ pub async fn main(
                 }
                 let _ = answ_chan.send(inhash).is_err();
             }
-            Cm::Upload { dump, answ_chan } => {
+            Cm::Upload {
+                mut dump,
+                answ_chan,
+            } => {
                 let env = env.clone();
                 spawn_blocking(move || {
-                    let h = StoreHash::hash_complex::<ThinTree>(&dump);
-                    let res = if !env.store_locks.lock().unwrap().insert(h) {
-                        // maybe return ResourceBusy when rust#86442 is fixed/stable
-                        Ok(())
+                    // this would be much nicer if we had try-blocks...
+                    let res = if let Err(e) = dump.submit_all_inlines(&mut |rh, regu| {
+                        register_cafile(&env.store_path, &env.store_cafiles_locks, rh, regu)
+                    }) {
+                        Err(e)
                     } else {
-                        // TODO: deduplicate files against .links
-                        let p = env.store_path.join(h.to_string());
-                        let ret = if p.exists() {
-                            // TODO: auto repair
+                        let h = StoreHash::hash_complex::<ThinTree>(&dump);
+                        if !env.store_locks.lock().unwrap().insert(h) {
+                            // maybe return ResourceBusy when rust#86442 is fixed/stable
                             Ok(())
-                        } else if let Err(e) = dump.write_to_path(
-                            p.as_std_path(),
-                            DumpFlags {
-                                force: false,
-                                make_readonly: true,
-                            },
-                            &mk_request_cafile(&env.store_path),
-                        ) {
-                            Err(e)
                         } else {
-                            Ok(())
-                        };
-                        env.store_locks.lock().unwrap().remove(&h);
-                        ret
+                            let p = env.store_path.join(h.to_string());
+                            let ret = if p.exists() {
+                                // TODO: auto repair
+                                Ok(())
+                            } else if let Err(e) = dump.write_to_path(
+                                p.as_std_path(),
+                                DumpFlags {
+                                    force: false,
+                                    make_readonly: true,
+                                },
+                                &mk_request_cafile(&env.store_path),
+                            ) {
+                                Err(e)
+                            } else {
+                                Ok(())
+                            };
+                            env.store_locks.lock().unwrap().remove(&h);
+                            ret
+                        }
                     };
                     let _ = answ_chan.send(res).is_err();
                 });

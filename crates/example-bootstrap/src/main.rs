@@ -35,13 +35,15 @@ async fn fetchurl_outside_store(
         }
     }
 
-    let h2 = StoreHash::hash_complex(&dump);
+    let mut dump2 = dump.clone();
+    dump2.submit_all_inlines(&mut |_, _| Ok(())).unwrap();
+    let h2 = StoreHash::hash_complex(&dump2);
     if h2 != h {
         error!(
             "fetchurl ({}): hash mismatch, expected = {}, got = {}",
             url, expect_hash, h2
         );
-        anyhow::bail!("hash mismatch for url ({})", url);
+        anyhow::bail!("hash mismatch");
     }
 
     Ok(dump)
@@ -104,7 +106,9 @@ fn mk_envfiles(elems: Vec<(&str, ThinTree)>) -> BTreeMap<yzix_client::BaseName, 
 }
 
 async fn smart_upload(driver: &Driver, dump: ThinTree, name: &str) -> anyhow::Result<StoreHash> {
-    let h = StoreHash::hash_complex(&dump);
+    let mut dump2 = dump.clone();
+    dump2.submit_all_inlines(&mut |_, _| Ok(())).unwrap();
+    let h = StoreHash::hash_complex(&dump2);
 
     if !driver.has_out_hash(h).await {
         let x = driver.upload(dump).await;
@@ -242,7 +246,7 @@ async fn main() -> anyhow::Result<()> {
     let h_busybox = fetchurl(
         &driver,
         "http://tarballs.nixos.org/stdenv-linux/i686/4907fc9e8d0d82b28b3c56e3a478a2882f1d700f/busybox",
-        "liAXAxlPQSRlEjqQFgoewxVmQTv73rfukUCyyPZfsKI",
+        "+B850Bjml+k7Fh8azuXKfQR8ZxYgerOhZiBJhD+OwJ4",
         "busybox",
         true,
     );
@@ -250,7 +254,7 @@ async fn main() -> anyhow::Result<()> {
     let h_bootstrap_tools = fetchurl(
         &driver,
         "http://tarballs.nixos.org/stdenv-linux/x86_64/c5aabb0d603e2c1ea05f5a93b3be82437f5ebf31/bootstrap-tools.tar.xz",
-        "ox+VaXgaAFWqqqHhxq7WwHHUdkg76x8dO3EDvlCas8U",
+        "VFDhxoFe6d81bQrWP2mHR043nAtWnFAQSe9Bu9W9RaI",
         "",
         false,
     );
@@ -258,7 +262,7 @@ async fn main() -> anyhow::Result<()> {
     let h_unpack_bootstrap_tools = fetchurl(
         &driver,
         "https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/stdenv/linux/bootstrap-tools/scripts/unpack-bootstrap-tools.sh",
-        "ow8ctEPXY74kphwpR0SAb2fIbZ7FmFr8EnxmPH80_sY",
+        "4VxGcP5b9SAX_vf7nnf0+0T7M4i+gRc2Tnttgl3DvIM",
         "",
         true,
     );
@@ -334,7 +338,7 @@ async fn main() -> anyhow::Result<()> {
                     Runner::new_fetchu(
                         &driver2,
                         "https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.16.tar.xz",
-                        "Z6afPd9StYWqNcEaB6Ax1kXor6pZilBRHLRvKD+GWjM",
+                        "qAUzBhalNzfuGFhgHGll_x7dEnVgOrfWZcJBjlJ4soo",
                         "",
                         false,
                     )
@@ -375,16 +379,16 @@ async fn main() -> anyhow::Result<()> {
             //"http://ftp.gnu.org/gnu/binutils/binutils-2.38.tar.xz",
             //"dWdbr5ALD_NFkb2GxUznkedusXS9uMaTLdcYarsxt7M",
             "http://ftp.gnu.org/gnu/binutils/binutils-2.37.tar.xz",
-            "pR3S4OOkDJr_Xl58nSnQIt_Og45RwvizPKi17rC8r9w",
+            "QXRlu09CbhF2Y1HvHQzZzun7gbMd5rmV6_m3xzrbBiQ",
             "",
             false,
         );
         let asrp = fetchurl_wrapped(
             &driver2,
             "https://raw.githubusercontent.com/NixOS/nixpkgs/5abe06c801b0d513bf55d8f5924c4dc33f8bf7b9/pkgs/development/tools/misc/binutils/always-search-rpath.patch",
-            "b6JXhg+NKc2idFHC_4PkO5LjYeKH+gsI1rDa0BUdX+Q",
+            "SmUZ9H1bWUuTUPGa9WpZc02EKHOiSBoM2ZdxfZ3PNvo",
             "",
-            true,
+            false,
         );
         Ok(WorkItem {
             envs: mk_envs(vec![("src", format!("{}/{}", store_path2, src.await?))]),
@@ -443,7 +447,7 @@ async fn main() -> anyhow::Result<()> {
         let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/m4/m4-1.4.19.tar.xz",
-            "i0KjpKfM4RbyXz26vY41jdKIh6jpczykXCcw1_9hzxw",
+            "0a+VYnJfCDfm5uuoCDjjEiWvfO_CyBoVR6TiumW7xzU",
             "",
             false,
         );
@@ -465,7 +469,7 @@ async fn main() -> anyhow::Result<()> {
         let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.xz",
-            "BN+S1KcfEM_ZyazWQAwkutnISAcxQmcYhhEqRyDw5wo",
+            "2Y1NN59whhgXh9dnsLdm5q_LC1d+PtOf2vrpxgbFtsc",
             "",
             false,
         );
@@ -497,7 +501,7 @@ async fn main() -> anyhow::Result<()> {
         let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/mpfr/mpfr-4.1.0.tar.xz",
-            "I0xvlGlSGYy8EdaENBtjFJjiaYuaRw8FB5VWp5d4eJY",
+            "pv4Lc8hk+jbF_wfwzppfSfglI010A6aTF5p5jDSsnK0",
             "",
             false,
         );
@@ -530,7 +534,7 @@ async fn main() -> anyhow::Result<()> {
         let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/mpc/mpc-1.2.1.tar.gz",
-            "OBypmXEnvXlpemFyE3vYcCRTOY9gKchO9ePiBhw5Qhk",
+            "qfCKCGwET3kpnFoh7wn8XMOR0cGBnXHQWdZO3Ddq0eI",
             "",
             false,
         );
@@ -599,7 +603,7 @@ async fn main() -> anyhow::Result<()> {
             //"http://ftp.gnu.org/gnu/gcc/gcc-11.2.0/gcc-11.2.0.tar.gz",
             //"h3awRfXxv4uVCAML3UDhppwVtM2pvXqYJr9S+6PCaFA",
             "http://ftp.gnu.org/gnu/gcc/gcc-10.2.0/gcc-10.2.0.tar.gz",
-            "pNeH0nV0lik1G7Ze5zKjKw8SJKdDCH8TIDIRIJUu3fA",
+            "0gaKxhSw6ofIEoRH2XLJ7d5KSAxf9fZInsB4POepXMc",
             "",
             false,
         );
@@ -667,7 +671,7 @@ async fn main() -> anyhow::Result<()> {
         let src = fetchurl_wrapped(
             &driver2,
             "https://www.cpan.org/src/5.0/perl-5.34.1.tar.gz",
-            "B7Y8Fp6JaYxNBStTLlc5oiQaJDAAcBGPpr9lSP5lOpo",
+            "3Ls49BfrYuSiuRTubVBdBkCKAOVCGvUKuvX0XB10WQo",
             "",
             false,
         );
@@ -706,7 +710,7 @@ async fn main() -> anyhow::Result<()> {
         let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/bison/bison-3.8.2.tar.gz",
-            "QP0sQXBOzt_AlrvUN6NCBuwyk9KSwug8djD6AbAX3Rs",
+            "9yyz88o6AcVANnLDBbPo3IQGJU8Xc_Lv03NsDFy+jTA",
             "",
             false,
         );
@@ -761,14 +765,14 @@ async fn main() -> anyhow::Result<()> {
         let src = fetchurl_wrapped(
             &driver2,
             "https://www.python.org/ftp/python/3.10.4/Python-3.10.4.tar.xz",
-            "6Di_C2g+y4lPVFZqBRpXCxy72RVETQrzZO3DNkKeNOY",
+            "XKL3L81P5R+Qmuezwfju6N9ByNshvWRk0EHYY51ueAo",
             "",
             false,
         );
         let no_ldconfig = fetchurl_wrapped(
             &driver2,
             "https://raw.githubusercontent.com/NixOS/nixpkgs/9fc849704f9cb8baba7b3a30cceac00a448d9a53/pkgs/development/interpreters/python/cpython/3.10/no-ldconfig.patch",
-            "x77POldOugPGqVp_LemeMH2xfclFeN47Rz_33LA64wE",
+            "0bAn_ysm2ElrQdQw9OxbFktiOk09ihtD7eZ0uWJkxiM",
             "",
             false,
         );
@@ -892,7 +896,7 @@ async fn main() -> anyhow::Result<()> {
         let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/glibc/glibc-2.34.tar.xz",
-            "731BEx5ziNAm0RC2CbGB5Qut2nLN_Lipp_SggSNR9WQ",
+            "EQvlIPqQhG3JJjoH8VsbXcwGqFHbxJ+m1P1eSWEX9e0",
             "",
             false,
         );
