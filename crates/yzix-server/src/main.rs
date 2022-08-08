@@ -5,6 +5,7 @@ use yzix_store_builder::{Utf8Path, Utf8PathBuf};
 
 #[derive(Debug, serde::Deserialize)]
 pub struct ServerConfig {
+    loglevel: String,
     store_path: Utf8PathBuf,
     container_runner: String,
     socket_bind: std::net::SocketAddr,
@@ -20,17 +21,11 @@ async fn main() {
     {
         use std::env;
         for (key, _) in env::vars_os() {
-            if key == "RUST_LOG" {
-                continue;
-            }
             env::remove_var(key);
         }
         env::set_var("LC_ALL", "C.UTF-8");
         env::set_var("TZ", "UTC");
     }
-
-    // install global log subscriber configured based on RUST_LOG envvar.
-    tracing_subscriber::fmt::init();
 
     let config: ServerConfig = {
         let mut args = std::env::args().skip(1);
@@ -77,6 +72,16 @@ async fn main() {
         std::process::exit(1);
     }
 
+    // install global log subscriber configured based on RUST_LOG envvar.
+
+    {
+        use tracing_subscriber::{*, prelude::*};
+        registry()
+            .with(fmt::layer())
+            .with(EnvFilter::new(&config.loglevel))
+            .init();
+    }
+
     use hyper::service::{make_service_fn, service_fn};
 
     let (client_reqs, client_reqr) = mpsc::channel(1000);
@@ -101,9 +106,6 @@ async fn main() {
         store_path: config.store_path.clone(),
         ctrl_r: client_reqr,
     }));
-
-    tracing::warn!("READY");
-    eprintln!("hewwo");
 
     if let Err(e) = jh_httpserver.await {
         eprintln!("yzix-server/HTTP: {}", e);
