@@ -75,7 +75,7 @@ async fn main() {
     // install global log subscriber configured based on RUST_LOG envvar.
 
     {
-        use tracing_subscriber::{*, prelude::*};
+        use tracing_subscriber::{prelude::*, *};
         registry()
             .with(fmt::layer())
             .with(EnvFilter::new(&config.loglevel))

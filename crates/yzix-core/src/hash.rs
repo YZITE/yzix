@@ -130,7 +130,13 @@ impl<'de> serde::Deserialize<'de> for Hash {
                 core::str::FromStr::from_str(s).map_err(serde::de::Error::custom)
             }
         }
-        serde::Deserializer::deserialize_newtype_struct(deserializer, "Hash", Visitor(PhantomData))
+        if deserializer.is_human_readable() {
+            <String as serde::Deserialize<'de>>::deserialize(deserializer)
+                .and_then(|s| core::str::FromStr::from_str(&s).map_err(serde::de::Error::custom))
+        } else {
+            serde::Deserialize::deserialize(deserializer).map(Hash)
+            //serde::Deserializer::deserialize_newtype_struct(deserializer, "Hash", Visitor(PhantomData))
+        }
     }
 }
 
@@ -263,13 +269,26 @@ mod tests {
 
     #[test]
     fn deser_from_str() {
-        use serde_test::Token;
+        use serde_test::{Configure, Token};
         serde_test::assert_de_tokens(
             &Hash([
                 155, 206, 14, 23, 19, 159, 145, 89, 231, 23, 186, 38, 215, 155, 218, 246, 141, 102,
                 128, 87, 22, 15, 84, 198, 31, 110, 153, 133, 50, 207, 187, 40,
-            ]),
+            ])
+            .readable(),
             &[Token::Str("m84OFxOfkVnnF7om15va9o1mgFcWD1TGH26ZhTLPuyg")],
+        );
+    }
+
+    #[test]
+    fn deser_from_json_str() {
+        assert_eq!(
+            serde_json::from_str::<Hash>("\"m84OFxOfkVnnF7om15va9o1mgFcWD1TGH26ZhTLPuyg\"")
+                .unwrap(),
+            Hash([
+                155, 206, 14, 23, 19, 159, 145, 89, 231, 23, 186, 38, 215, 155, 218, 246, 141, 102,
+                128, 87, 22, 15, 84, 198, 31, 110, 153, 133, 50, 207, 187, 40,
+            ])
         );
     }
 

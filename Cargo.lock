@@ -1752,6 +1752,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_bytes",
+ "serde_json",
  "serde_test",
  "thiserror",
  "xattr",

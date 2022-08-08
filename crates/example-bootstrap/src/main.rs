@@ -2,10 +2,7 @@ use indoc::indoc;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use tracing::{error, info};
-use yzix_client::{
-    Driver, OutputName, Regular, StoreHash, TaggedHash, ThinTree,
-    WorkItem,
-};
+use yzix_client::{Driver, OutputName, Regular, StoreHash, TaggedHash, ThinTree, WorkItem};
 
 async fn my_fetch(url: &str) -> Result<Vec<u8>, reqwest::Error> {
     Ok(reqwest::get(url).await?.bytes().await?.as_ref().to_vec())
@@ -103,10 +100,7 @@ fn mk_envfiles(elems: Vec<(&str, ThinTree)>) -> BTreeMap<yzix_client::BaseName, 
         .collect()
 }
 
-async fn smart_upload(
-    driver: &Driver,
-    dump: ThinTree,
-) -> anyhow::Result<TaggedHash<ThinTree>> {
+async fn smart_upload(driver: &Driver, dump: ThinTree) -> anyhow::Result<TaggedHash<ThinTree>> {
     let mut dump2 = dump.clone();
     dump2.submit_all_inlines(&mut |_, _| Ok(())).unwrap();
     let h = TaggedHash::hash_complex(&dump2);
