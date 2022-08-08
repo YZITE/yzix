@@ -52,7 +52,7 @@ impl Driver {
             .send()
             .await
             .expect("failed to send request");
-        if resp.status() != StatusCode::OK {
+        if !matches!(resp.status(), StatusCode::OK | StatusCode::ACCEPTED) {
             tracing::error!("{} :: {}", resp.status(), resp.text().await.unwrap());
             panic!("task submission failed");
         }
@@ -96,7 +96,7 @@ impl Driver {
             .send()
             .await
             .expect("failed to send request");
-        if resp.status() != StatusCode::OK {
+        if !matches!(resp.status(), StatusCode::OK | StatusCode::NO_CONTENT) {
             tracing::error!("{} :: {}", resp.status(), resp.text().await.unwrap());
             panic!("upload failed");
         }
@@ -108,11 +108,13 @@ impl Driver {
             .send()
             .await
             .expect("failed to send request");
-        if !matches!(resp.status(), StatusCode::OK | StatusCode::NOT_FOUND) {
-            tracing::error!("{} :: {}", resp.status(), resp.text().await.unwrap());
-            false
-        } else {
-            resp.status() == StatusCode::OK
+        match resp.status() {
+            StatusCode::OK | StatusCode::NO_CONTENT => true,
+            StatusCode::NOT_FOUND => false,
+            x => {
+                tracing::warn!("{} :: {}", x, resp.text().await.unwrap());
+                false
+            }
         }
     }
 

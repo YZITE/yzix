@@ -17,7 +17,6 @@ tracing-subscriber = "0.3"
 
 [dependencies.futures-util]
 version = "0.3"
-features = ["sink"]
 
 [dependencies.hyper]
 version = "0.14"

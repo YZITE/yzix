@@ -396,7 +396,7 @@ pub async fn handle_client(
                         }),
                     }
                     .to_string(),
-                    TaskBoundResponse::Log(s) => format!(".{}", s),
+                    TaskBoundResponse::Log(s) => format!(".{}\n", s),
                 })
                 .map(|i| Ok(hyper::body::Bytes::copy_from_slice(i.as_bytes())));
 

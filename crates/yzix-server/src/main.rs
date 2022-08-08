@@ -90,6 +90,7 @@ async fn main() {
             }))
         }
     });
+
     let jh_httpserver = hyper::Server::bind(&config.socket_bind)
         .serve(make_service)
         .with_graceful_shutdown(async { tokio::signal::ctrl_c().await.unwrap() });
@@ -100,6 +101,10 @@ async fn main() {
         store_path: config.store_path.clone(),
         ctrl_r: client_reqr,
     }));
+
+    tracing::warn!("READY");
+    eprintln!("hewwo");
+
     if let Err(e) = jh_httpserver.await {
         eprintln!("yzix-server/HTTP: {}", e);
     }
