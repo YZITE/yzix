@@ -1,3 +1,4 @@
+use super::TaskBoundResponse;
 use camino::Utf8Path;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::{marker::Unpin, mem::drop, path::Path, sync::Arc};
@@ -5,7 +6,7 @@ use tokio::sync::broadcast::{self, Receiver, Sender};
 use tracing::trace;
 use yzix_core::{
     visit_bytes::Element as _, BuildError, DumpFlags, OutputName, Regular, StoreHash, TaggedHash,
-    TaskBoundResponse, ThinTree,
+    ThinTree,
 };
 
 async fn handle_logging_to_intermed<T: tokio::io::AsyncRead + Unpin>(

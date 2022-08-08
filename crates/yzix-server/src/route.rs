@@ -4,8 +4,8 @@ use core::mem::drop;
 use hyper::{body::HttpBody as _, header, Body, Method, Request, Response, StatusCode};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
-use yzix_core::{BuildError, TaggedHash, TaskBoundResponse, ThinTree};
-use yzix_store_builder::{ControlMessage as CtrlMsg, OnObject as OnObj};
+use yzix_core::{BuildError, TaggedHash, ThinTree};
+use yzix_store_builder::{ControlMessage as CtrlMsg, OnObject as OnObj, TaskBoundResponse};
 
 fn resp_aborted() -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     let (chan, body) = Body::channel();

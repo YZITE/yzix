@@ -17,8 +17,7 @@ use tokio::task::{block_in_place, spawn_blocking};
 use tracing::{debug, error, span, trace, warn, Level};
 use tracing_futures::Instrument as _;
 use yzix_core::{
-    DumpFlags, Regular, StoreError, StoreErrorKind, StoreHash, TaggedHash, TaskBoundResponse,
-    ThinTree,
+    BuildError, DumpFlags, Regular, StoreError, StoreErrorKind, StoreHash, TaggedHash, ThinTree,
 };
 
 mod fwi;
@@ -34,6 +33,27 @@ pub const INPUT_REALISATION_DIR_POSTFIX: &str = ".in";
 pub const CAFILE_SUBDIR_NAME: &str = ".links";
 
 pub type TaskId = TaggedHash<yzix_core::WorkItem>;
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub enum TaskBoundResponse {
+    BuildSuccess(BTreeMap<yzix_core::OutputName, TaggedHash<ThinTree>>),
+    Log(String),
+    BuildError(BuildError),
+}
+
+impl TaskBoundResponse {
+    #[inline]
+    pub fn task_finished(&self) -> bool {
+        matches!(self, Self::BuildSuccess(_) | Self::BuildError(_))
+    }
+}
+
+impl From<BuildError> for TaskBoundResponse {
+    #[inline(always)]
+    fn from(x: BuildError) -> Self {
+        TaskBoundResponse::BuildError(x)
+    }
+}
 
 pub enum OnObject<T> {
     Upload {

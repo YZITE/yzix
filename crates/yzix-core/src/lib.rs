@@ -26,29 +26,6 @@ pub use ser_trait::{Serialize, Update as SerUpdate};
 
 pub mod visit_bytes;
 
-use std::collections::BTreeMap;
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-pub enum TaskBoundResponse {
-    BuildSuccess(BTreeMap<OutputName, TaggedHash<ThinTree>>),
-    Log(String),
-    BuildError(BuildError),
-}
-
-impl TaskBoundResponse {
-    #[inline]
-    pub fn task_finished(&self) -> bool {
-        matches!(self, Self::BuildSuccess(_) | Self::BuildError(_))
-    }
-}
-
-impl From<BuildError> for TaskBoundResponse {
-    #[inline(always)]
-    fn from(x: BuildError) -> Self {
-        TaskBoundResponse::BuildError(x)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, thiserror::Error)]
 pub enum BuildError {
     #[error("command was killed by client")]
