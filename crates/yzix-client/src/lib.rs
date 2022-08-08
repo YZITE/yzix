@@ -59,13 +59,14 @@ impl Driver {
         let mut data = Vec::new();
         let mut non_dotted = String::new();
         use bytes::Buf;
-        while let Some(chunk) = resp.chunk().await.expect("unable to read next chunk") {
+        while let Some(mut chunk) = resp.chunk().await.expect("unable to read next chunk") {
             loop {
                 let part = chunk.chunk();
                 if part.is_empty() {
                     break;
                 }
                 data.extend_from_slice(part);
+                chunk.advance(part.len());
                 let mut pwnl: Vec<_> = data.split(|&i| i == b'\n').collect();
                 if pwnl.len() > 1 {
                     let l = pwnl.pop().unwrap().to_vec();
