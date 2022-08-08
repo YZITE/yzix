@@ -26,13 +26,7 @@ async fn main() {
     // install global log subscriber configured based on RUST_LOG envvar.
     tracing_subscriber::fmt::init();
 
-    let mut stream = tokio::net::TcpStream::connect(server_addr)
-        .await
-        .expect("unable to connect to yzix server");
-    yzix_client::do_auth(&mut stream, &bearer_token)
-        .await
-        .expect("unable to send authentication info to yzix server");
-    let driver = Driver::new(stream).await;
+    let driver = Driver::new(server_addr, bearer_token).await;
 
     let mut dump = ThinTree::RegularInline(Regular {
         executable: args.executable,
@@ -59,5 +53,5 @@ async fn main() {
         return;
     }
 
-    println!("res  = {:?}", driver.upload(dump).await);
+    println!("res  = {:?}", driver.upload(h, &dump).await);
 }

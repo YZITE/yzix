@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use tracing::{error, info};
 use yzix_client::{
-    Driver, OutputName, Regular, StoreHash, TaggedHash, TaskBoundResponse as Tbr, ThinTree,
+    Driver, OutputName, Regular, StoreHash, TaggedHash, ThinTree,
     WorkItem,
 };
 
@@ -65,11 +65,8 @@ async fn fetchurl(
 
     let dump = fetchurl_outside_store(url, expect_hash, with_path, executable).await?;
 
-    let x = driver.upload(dump).await;
+    let x = driver.upload(h, &dump).await;
     info!("fetchurl ({}): {:?}", url, x);
-    if !x.is_ok() {
-        anyhow::bail!("fetchurl ({}) failed: {:?}", url, x);
-    }
 
     Ok(h)
 }
@@ -109,17 +106,13 @@ fn mk_envfiles(elems: Vec<(&str, ThinTree)>) -> BTreeMap<yzix_client::BaseName, 
 async fn smart_upload(
     driver: &Driver,
     dump: ThinTree,
-    name: &str,
 ) -> anyhow::Result<TaggedHash<ThinTree>> {
     let mut dump2 = dump.clone();
     dump2.submit_all_inlines(&mut |_, _| Ok(())).unwrap();
     let h = TaggedHash::hash_complex(&dump2);
 
     if !driver.has_out_hash(h).await {
-        let x = driver.upload(dump).await;
-        if !x.is_ok() {
-            anyhow::bail!("smart_upload failed @ {}: {:?}", name, x);
-        }
+        driver.upload(h, &dump).await;
     }
 
     Ok(h)
@@ -167,7 +160,7 @@ async fn gen_wrappers(
     dump = ThinTree::Directory(
         std::iter::once(("bin".to_string().try_into().unwrap(), dump)).collect(),
     );
-    smart_upload(driver, dump, "genWrappers").await
+    smart_upload(driver, dump).await
 }
 
 #[derive(Clone)]
@@ -200,23 +193,13 @@ impl Runner {
 
     fn new_wi(
         driver: &Driver,
-        name: &'static str,
         wi: impl std::future::Future<Output = Result<WorkItem, ()>> + Send + 'static,
     ) -> Self {
         let (notif_s, notif) = tokio::sync::watch::channel(Err(()));
         let driver = driver.clone();
         tokio::spawn(async move {
             let res = match wi.await {
-                Ok(wi2) => match driver.run_task(wi2).await {
-                    Tbr::BuildSuccess(outs) => {
-                        info!("{} => {:?}", name, outs);
-                        Ok(outs)
-                    }
-                    e => {
-                        error!("{} => {:?}", name, e);
-                        Err(())
-                    }
-                },
+                Ok(wi2) => Ok(driver.run_task(wi2).await),
                 Err(()) => Err(()),
             };
             let _ = notif_s.send(res).is_ok();
@@ -241,13 +224,7 @@ async fn main() -> anyhow::Result<()> {
     // install global log subscriber configured based on RUST_LOG envvar.
     tracing_subscriber::fmt::init();
 
-    let mut stream = tokio::net::TcpStream::connect(server_addr)
-        .await
-        .expect("unable to connect to yzix server");
-    yzix_client::do_auth(&mut stream, &bearer_token)
-        .await
-        .expect("unable to send authentication info to yzix server");
-    let driver = Driver::new(stream).await;
+    let driver = Driver::new(server_addr, bearer_token).await;
 
     /* === seed === */
 
@@ -303,11 +280,7 @@ async fn main() -> anyhow::Result<()> {
         .await;
 
     info!("bootstrap_tools = {:?}", bootstrap_tools);
-
-    let bootstrap_tools = match bootstrap_tools {
-        Tbr::BuildSuccess(outs) => outs["out"],
-        _ => anyhow::bail!("unable to build bootstrap tools"),
-    };
+    let bootstrap_tools = bootstrap_tools["out"];
 
     let wrappers = gen_wrappers(&driver, &store_path, bootstrap_tools).await?;
     info!("wrappers = {:?}", wrappers);
@@ -325,7 +298,6 @@ async fn main() -> anyhow::Result<()> {
                 .replace("@wrappers@", &format!("{}/{}", store_path, wrappers))
                 .into_bytes(),
         }),
-        "buildsh",
     )
     .await?;
 
@@ -338,7 +310,7 @@ async fn main() -> anyhow::Result<()> {
 
     let driver2 = driver.clone();
     let store_path2 = store_path.clone();
-    let kernel_headers = Runner::new_wi(&driver, "kernel-headers", async move {
+    let kernel_headers = Runner::new_wi(&driver, async move {
         Ok(WorkItem {
             envs: mk_envs(vec![(
                 "src",
@@ -383,7 +355,7 @@ async fn main() -> anyhow::Result<()> {
 
     let driver2 = driver.clone();
     let store_path2 = store_path.clone();
-    let binutils = Runner::new_wi(&driver, "binutils", async move {
+    let binutils = Runner::new_wi(&driver, async move {
         let src = fetchurl_wrapped(
             &driver2,
             //"http://ftp.gnu.org/gnu/binutils/binutils-2.38.tar.xz",
@@ -447,13 +419,12 @@ async fn main() -> anyhow::Result<()> {
             .to_string()
             .into_bytes(),
         }),
-        "gnu-generic-script",
     )
     .await?;
 
     let driver2 = driver.clone();
     let store_path2 = store_path.clone();
-    let gnum4 = Runner::new_wi(&driver, "gnum4", async move {
+    let gnum4 = Runner::new_wi(&driver, async move {
         let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/m4/m4-1.4.19.tar.xz",
@@ -475,7 +446,7 @@ async fn main() -> anyhow::Result<()> {
     let driver2 = driver.clone();
     let store_path2 = store_path.clone();
     let mut gnum4_ = gnum4.clone();
-    let gmp = Runner::new_wi(&driver, "gmp", async move {
+    let gmp = Runner::new_wi(&driver, async move {
         let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.xz",
@@ -507,7 +478,7 @@ async fn main() -> anyhow::Result<()> {
     let driver2 = driver.clone();
     let store_path2 = store_path.clone();
     let mut gmp_ = gmp.clone();
-    let mpfr = Runner::new_wi(&driver, "mpfr", async move {
+    let mpfr = Runner::new_wi(&driver, async move {
         let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/mpfr/mpfr-4.1.0.tar.xz",
@@ -540,7 +511,7 @@ async fn main() -> anyhow::Result<()> {
     let store_path2 = store_path.clone();
     let mut gmp_ = gmp.clone();
     let mut mpfr_ = mpfr.clone();
-    let mpc = Runner::new_wi(&driver, "mpc", async move {
+    let mpc = Runner::new_wi(&driver, async move {
         let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/mpc/mpc-1.2.1.tar.gz",
@@ -607,7 +578,7 @@ async fn main() -> anyhow::Result<()> {
     let mut gmp_ = gmp.clone();
     let mut mpfr_ = mpfr.clone();
     let mut mpc_ = mpc.clone();
-    let gcc = Runner::new_wi(&driver, "gcc", async move {
+    let gcc = Runner::new_wi(&driver, async move {
         let src = fetchurl_wrapped(
             &driver2,
             //"http://ftp.gnu.org/gnu/gcc/gcc-11.2.0/gcc-11.2.0.tar.gz",
@@ -681,7 +652,7 @@ async fn main() -> anyhow::Result<()> {
 
     let driver2 = driver.clone();
     let store_path2 = store_path.clone();
-    let perl = Runner::new_wi(&driver, "perl", async move {
+    let perl = Runner::new_wi(&driver, async move {
         let src = fetchurl_wrapped(
             &driver2,
             "https://www.cpan.org/src/5.0/perl-5.34.1.tar.gz",
@@ -720,7 +691,7 @@ async fn main() -> anyhow::Result<()> {
     let store_path2 = store_path.clone();
     let mut gnum4_ = gnum4.clone();
     let mut perl_ = perl.clone();
-    let bison = Runner::new_wi(&driver, "bison", async move {
+    let bison = Runner::new_wi(&driver, async move {
         let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/bison/bison-3.8.2.tar.gz",
@@ -775,7 +746,7 @@ async fn main() -> anyhow::Result<()> {
 
     let driver2 = driver.clone();
     let store_path2 = store_path.clone();
-    let python3 = Runner::new_wi(&driver, "python3.10", async move {
+    let python3 = Runner::new_wi(&driver, async move {
         let src = fetchurl_wrapped(
             &driver2,
             "https://www.python.org/ftp/python/3.10.4/Python-3.10.4.tar.xz",
@@ -897,7 +868,6 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .into_bytes(),
         }),
-        "buildscript-glibc.sh",
     )
     .await?;
 
@@ -906,7 +876,7 @@ async fn main() -> anyhow::Result<()> {
     let mut bison_ = bison.clone();
     let mut python3_ = python3.clone();
     let mut kernel_headers_ = kernel_headers.clone();
-    let glibc = Runner::new_wi(&driver, "glibc", async move {
+    let glibc = Runner::new_wi(&driver, async move {
         let src = fetchurl_wrapped(
             &driver2,
             "http://ftp.gnu.org/gnu/glibc/glibc-2.34.tar.xz",

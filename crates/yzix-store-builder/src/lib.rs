@@ -568,7 +568,6 @@ pub async fn main(
                     } => {
                         let env = env.clone();
                         run_detached(answ_chan, move || {
-                            // this would be much nicer if we had try-blocks...
                             data.submit_all_inlines(&mut |rh, regu| {
                                 register_cafile(&env.store_path, &env.store_cafiles_locks, rh, regu)
                             })?;
