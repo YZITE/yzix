@@ -313,18 +313,6 @@ pub async fn handle_client(
         }
 
         (Method::POST, "/task") => {
-            fn mk_reqerr(t: &str) -> Result<Response<Body>, hyper::http::Error> {
-                Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .header(header::CONTENT_TYPE, "application/json")
-                    .body(
-                        json!({
-                            "errors": [ { "type": t } ],
-                        })
-                        .to_string()
-                        .into(),
-                    )
-            }
             if h_parts
                 .headers
                 .get(header::CONTENT_TYPE)
