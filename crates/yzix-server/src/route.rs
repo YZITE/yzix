@@ -3,22 +3,21 @@
 use core::mem::drop;
 use hyper::{body::HttpBody as _, header, Body, Method, Request, Response, StatusCode};
 use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
+use tokio::task::spawn_blocking;
 use yzix_core::{BuildError, TaggedHash, ThinTree};
-use yzix_store_builder::{ControlMessage as CtrlMsg, OnObject as OnObj, TaskBoundResponse};
+use yzix_store_builder::{Env as SbEnv, OnObject as OnObj, TaskBoundResponse};
 
-fn resp_aborted() -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+fn resp_aborted() -> Result<Response<Body>, hyper::http::Error> {
     let (chan, body) = Body::channel();
     chan.abort();
     Response::builder()
         .status(StatusCode::INTERNAL_SERVER_ERROR)
         .body(body)
-        .map_err(Into::into)
 }
 
 async fn handle_store_thintree(
-    // channel for requests from client to server
-    ctrl_reqs: mpsc::Sender<CtrlMsg>,
+    sbenv: Arc<SbEnv>,
     // the incoming request
     h_method: Method,
     treeid: String,
@@ -47,64 +46,46 @@ async fn handle_store_thintree(
     };
     match h_method {
         Method::HEAD => {
-            let (answ_chan, answ_recv) = oneshot::channel();
-            let _ = ctrl_reqs
-                .send(CtrlMsg::OnThinTree(OnObj::IsPresent { hash, answ_chan }))
-                .await
-                .is_err();
-            match answ_recv.await {
-                Ok(true) => Response::builder()
-                    .status(StatusCode::NO_CONTENT)
-                    .body(Body::empty())
-                    .map_err(Into::into),
-                // this does not perfectly fit the HTTP standard, but I/O errors can always happen...
-                Ok(false) => Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .body(Body::empty())
-                    .map_err(Into::into),
-                Err(_) => resp_aborted(),
-            }
+            Response::builder()
+                .status(if OnObj::is_present(&sbenv, hash) {
+                    StatusCode::NO_CONTENT
+                } else {
+                    // this does not perfectly fit the HTTP standard, but I/O errors can always happen...
+                    StatusCode::NOT_FOUND
+                })
+                .body(Body::empty())
         }
-        Method::GET => {
-            let (answ_chan, answ_recv) = oneshot::channel();
-            let _ = ctrl_reqs
-                .send(CtrlMsg::OnThinTree(OnObj::Download { hash, answ_chan }))
-                .await
-                .is_err();
-            match answ_recv.await {
-                Ok(Ok(dump)) => Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, "application/json")
-                    .body(
-                        serde_json::to_string(&dump)
-                            .expect("unable to serialize thintree")
-                            .into(),
-                    )
-                    .map_err(Into::into),
-                Ok(Err(e)) => Response::builder()
-                    .status(if e.kind.is_not_found() {
-                        StatusCode::NOT_FOUND
-                    } else {
-                        StatusCode::INTERNAL_SERVER_ERROR
-                    })
-                    .header(header::CONTENT_TYPE, "application/json")
-                    .body(
-                        serde_json::json!({
-                            "errors": [{
-                                "type": e.kind.errtype(),
-                                "f": e.to_string(),
-                                "path": e.real_path,
-                            }],
-                        })
-                        .to_string()
+        Method::GET => match spawn_blocking(move || OnObj::download(&sbenv, hash)).await {
+            Ok(Ok(dump)) => Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(
+                    serde_json::to_string(&dump)
+                        .expect("unable to serialize thintree")
                         .into(),
-                    )
-                    .map_err(Into::into),
-                Err(_) => resp_aborted(),
-            }
+                ),
+            Ok(Err(e)) => Response::builder()
+                .status(if e.kind.is_not_found() {
+                    StatusCode::NOT_FOUND
+                } else {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(
+                    serde_json::json!({
+                        "errors": [{
+                            "type": e.kind.errtype(),
+                            "f": e.to_string(),
+                            "path": e.real_path,
+                        }],
+                    })
+                    .to_string()
+                    .into(),
+                ),
+            Err(_) => resp_aborted(),
         }
+        .map_err(Into::into),
         Method::PUT => {
-            let (answ_chan, answ_recv) = oneshot::channel();
             if h_headers
                 .get(header::CONTENT_TYPE)
                 .map(|x| x == "application/json")
@@ -130,23 +111,14 @@ async fn handle_store_thintree(
                             .to_string()
                             .into(),
                         )
-                        .map_err(Into::into)
+                        .map_err(Into::into);
                 }
             };
             drop(bbytes);
-            let _ = ctrl_reqs
-                .send(CtrlMsg::OnThinTree(OnObj::Upload {
-                    hash,
-                    data,
-                    answ_chan,
-                }))
-                .await
-                .is_err();
-            match answ_recv.await {
+            match spawn_blocking(move || OnObj::upload(&sbenv, hash, data)).await {
                 Ok(Ok(())) => Response::builder()
                     .status(StatusCode::NO_CONTENT)
-                    .body(Body::empty())
-                    .map_err(Into::into),
+                    .body(Body::empty()),
                 Ok(Err(e)) => Response::builder()
                     .status(if e.kind.is_not_found() {
                         StatusCode::NOT_FOUND
@@ -164,17 +136,16 @@ async fn handle_store_thintree(
                         })
                         .to_string()
                         .into(),
-                    )
-                    .map_err(Into::into),
+                    ),
                 Err(_) => resp_aborted(),
             }
         }
         _ => Response::builder()
             .status(StatusCode::METHOD_NOT_ALLOWED)
             .header(header::ALLOW, "HEAD, GET, PUT")
-            .body(Body::empty())
-            .map_err(Into::into),
+            .body(Body::empty()),
     }
+    .map_err(Into::into)
 }
 
 async fn handle_realisations(
@@ -229,8 +200,6 @@ impl core::str::FromStr for InfoFormat {
 
 pub async fn handle_client(
     config: Arc<crate::ServerConfig>,
-    // channel for requests from client to server
-    ctrl_reqs: mpsc::Sender<CtrlMsg>,
     // store-builder environment
     sbenv: Arc<yzix_store_builder::Env>,
     // the incoming request
@@ -413,7 +382,9 @@ pub async fn handle_client(
             if j.first() == Some(&"store") && j.get(2) == Some(&"thintree") && j.get(3).is_none() {
                 let j_ = j.get(1).unwrap().to_string();
                 drop(j);
-                handle_store_thintree(ctrl_reqs, h_parts.method, j_, h_parts.headers, h_body).await
+                handle_store_thintree(sbenv.clone(), h_parts.method, j_, h_parts.headers, h_body)
+                    .await
+                    .map_err(Into::into)
             } else if j.first() == Some(&"realisations") {
                 j.remove(0);
                 handle_realisations(h_parts.method, j, h_parts.headers, h_body).await
