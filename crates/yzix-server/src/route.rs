@@ -231,6 +231,8 @@ pub async fn handle_client(
     config: Arc<crate::ServerConfig>,
     // channel for requests from client to server
     ctrl_reqs: mpsc::Sender<CtrlMsg>,
+    // store-builder environment
+    sbenv: Arc<yzix_store_builder::Env>,
     // the incoming request
     http_req: Request<Body>,
 ) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
@@ -345,28 +347,8 @@ pub async fn handle_client(
             drop(bbytes);
             use futures_util::StreamExt as _;
 
-            let (answ_chan, answ_recv) = oneshot::channel();
             let (log_s, log_r) = mpsc::channel(1000);
-
-            if ctrl_reqs
-                .send(CtrlMsg::SubmitTask {
-                    item,
-                    answ_chan,
-                    subscribe: Some(log_s.clone()),
-                })
-                .await
-                .is_err()
-            {
-                return Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(Body::empty())
-                    .map_err(Into::into);
-            }
-
-            let _tid = match answ_recv.await {
-                Ok(x) => x,
-                Err(_) => return resp_aborted(),
-            };
+            let _ = sbenv.clone().submit_task(item, Some(log_s.clone())).await;
 
             let bstream = tokio_stream::wrappers::ReceiverStream::new(log_r)
                 .map(|(_, tbr)| match &*tbr {

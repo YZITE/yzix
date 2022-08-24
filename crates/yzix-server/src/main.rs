@@ -85,13 +85,24 @@ async fn main() {
     use hyper::service::{make_service_fn, service_fn};
 
     let (client_reqs, client_reqr) = mpsc::channel(1000);
+    let sbenv = Arc::new(
+        yzix_store_builder::Env::new(
+            config.store_path.clone(),
+            config.container_runner.clone(),
+            num_cpus::get(),
+        )
+        .await,
+    );
+    let sbenv2 = sbenv.clone();
     let config2 = config.clone();
+
     let make_service = make_service_fn(move |_conn| {
         let config2 = config2.clone();
         let client_reqs = client_reqs.clone();
+        let sbenv2 = sbenv2.clone();
         async move {
             Ok::<_, core::convert::Infallible>(service_fn(move |req| {
-                route::handle_client(config2.clone(), client_reqs.clone(), req)
+                route::handle_client(config2.clone(), client_reqs.clone(), sbenv2.clone(), req)
             }))
         }
     });
@@ -100,12 +111,7 @@ async fn main() {
         .serve(make_service)
         .with_graceful_shutdown(async { tokio::signal::ctrl_c().await.unwrap() });
 
-    let jh_main = tokio::spawn(yzix_store_builder::main(yzix_store_builder::Args {
-        container_runner: config.container_runner.clone(),
-        parallel_job_cnt: num_cpus::get(),
-        store_path: config.store_path.clone(),
-        ctrl_r: client_reqr,
-    }));
+    let jh_main = tokio::spawn(yzix_store_builder::main(sbenv, client_reqr));
 
     if let Err(e) = jh_httpserver.await {
         eprintln!("yzix-server/HTTP: {}", e);

@@ -81,15 +81,6 @@ impl<T: yzix_core::Serialize> fmt::Display for OnObject<T> {
 }
 
 pub enum ControlMessage {
-    Kill {
-        answ_chan: oneshot::Sender<bool>,
-        task_id: TaskId,
-    },
-    SubmitTask {
-        answ_chan: oneshot::Sender<TaskId>,
-        item: yzix_core::WorkItem,
-        subscribe: Option<mpsc::Sender<(TaskId, Arc<TaskBoundResponse>)>>,
-    },
     OnRegular(OnObject<Regular>),
     OnThinTree(OnObject<ThinTree>),
 }
@@ -97,29 +88,10 @@ pub enum ControlMessage {
 impl fmt::Display for ControlMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Kill { task_id, .. } => write!(f, "Kill({})", task_id),
-            Self::SubmitTask {
-                item, subscribe, ..
-            } if subscribe.is_some() => write!(f, "SubmitTask+log({:?})", item),
-            Self::SubmitTask { item, .. } => write!(f, "SubmitTask({:?})", item),
             Self::OnRegular(x) => write!(f, "Regular:{}", x),
             Self::OnThinTree(x) => write!(f, "ThinTree:{}", x),
         }
     }
-}
-
-pub struct Args {
-    // container runner executable name or path
-    pub container_runner: String,
-
-    // amount of job slots
-    pub parallel_job_cnt: usize,
-
-    // path to store
-    pub store_path: Utf8PathBuf,
-
-    // primary control channel
-    pub ctrl_r: mpsc::Receiver<ControlMessage>,
 }
 
 // collection of all variables shared between all tasks
@@ -257,33 +229,13 @@ impl Env {
     }
 }
 
-pub async fn main(
-    Args {
-        container_runner,
-        mut ctrl_r,
-        parallel_job_cnt: cpucnt,
-        store_path,
-    }: Args,
-) {
-    let env = Arc::new(Env::new(store_path, container_runner, cpucnt).await);
+pub async fn main(env: Arc<Env>, mut ctrl_r: mpsc::Receiver<ControlMessage>) {
     use ControlMessage as Cm;
 
     // main loop
     while let Some(req) = ctrl_r.recv().await {
         trace!("received ctrlmsg: {}", req);
         match req {
-            Cm::Kill { task_id, answ_chan } => {
-                let resp = env.kill(task_id).await;
-                let _ = answ_chan.send(resp).is_err();
-            }
-            Cm::SubmitTask {
-                item: pre_item,
-                subscribe,
-                answ_chan,
-            } => {
-                let resp = env.clone().submit_task(pre_item, subscribe).await;
-                let _ = answ_chan.send(resp).is_err();
-            }
             Cm::OnRegular(xregu) => {
                 match xregu {
                     OnObject::IsPresent { answ_chan, hash } => {
