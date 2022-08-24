@@ -320,7 +320,7 @@ pub async fn handle_client(
             let _ = sbenv.clone().submit_task(item, Some(log_s.clone())).await;
 
             let bstream = tokio_stream::wrappers::ReceiverStream::new(log_r)
-                .map(|(_, tbr)| match &*tbr {
+                .map(|tbr| match &*tbr {
                     TaskBoundResponse::BuildSuccess(outs) => json!({
                         "outputs": outs,
                     })

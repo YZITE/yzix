@@ -18,13 +18,12 @@ pub struct HandleSubmitTaskEnv {
     pub parent: Arc<Env>,
     pub inpath: Utf8PathBuf,
     pub item: FullWorkItem,
-    pub subscribe: Option<mpsc::Sender<(TaskId, Arc<TaskBoundResponse>)>>,
+    pub subscribe: Option<mpsc::Sender<Arc<TaskBoundResponse>>>,
 }
 
 async fn handle_subscribe(
-    task_id: TaskId,
     mut logr: broadcast::Receiver<Arc<TaskBoundResponse>>,
-    subscribe: mpsc::Sender<(TaskId, Arc<TaskBoundResponse>)>,
+    subscribe: mpsc::Sender<Arc<TaskBoundResponse>>,
 ) {
     use broadcast::error::RecvError as Rerr;
     loop {
@@ -35,7 +34,7 @@ async fn handle_subscribe(
                 "*** log lagged, some messages have been lost ***".to_string(),
             )),
         };
-        if subscribe.send((task_id, x)).await.is_err() {
+        if subscribe.send(x).await.is_err() {
             break;
         }
     }
@@ -197,7 +196,7 @@ pub async fn handle_submit_task(
         .await
         .insert(inhash, Task { handle, logs });
     if let Some(x) = subscribe {
-        tokio::spawn(handle_subscribe(inhash, logr, x));
+        tokio::spawn(handle_subscribe(logr, x));
     }
     hold2.notify_one();
 }
@@ -206,13 +205,13 @@ impl Env {
     pub async fn submit_task(
         self: Arc<Self>,
         pre_item: yzix_core::WorkItem,
-        subscribe: Option<mpsc::Sender<(TaskId, Arc<TaskBoundResponse>)>>,
+        subscribe: Option<mpsc::Sender<Arc<TaskBoundResponse>>>,
     ) -> TaskId {
         let item = block_in_place(|| FullWorkItem::new(pre_item, &self.store_path));
         let inhash = item.inhash;
         if let Some(apt) = self.tasks.lock().await.get(&inhash) {
             if let Some(x) = subscribe {
-                tokio::spawn(handle_subscribe(inhash, apt.logs.subscribe(), x));
+                tokio::spawn(handle_subscribe(apt.logs.subscribe(), x));
             }
             return inhash;
             // we can't use an `else` block below because if we would do that,
@@ -227,10 +226,7 @@ impl Env {
             if let Some(x) = subscribe {
                 tokio::spawn(async move {
                     let _ = x
-                        .send((
-                            inhash,
-                            Arc::new(TaskBoundResponse::BuildSuccess(ex_outputs)),
-                        ))
+                        .send(Arc::new(TaskBoundResponse::BuildSuccess(ex_outputs)))
                         .await
                         .is_ok();
                 });
