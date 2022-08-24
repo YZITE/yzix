@@ -125,9 +125,11 @@ pub struct Args {
 }
 
 // collection of all variables shared between all tasks
-struct Env {
+pub struct Env {
     container_runner: String,
     store_path: Utf8PathBuf,
+
+    container_pool: Pool<String>,
 
     // cached store references, used to speed up closure calculatioon
     cache_store_refs: std::sync::Mutex<store_refs::Cache>,
@@ -149,8 +151,6 @@ struct Task {
 
 struct HandleSubmitTaskEnv {
     parent: Arc<Env>,
-    containerpool: Pool<String>,
-
     inpath: Utf8PathBuf,
     item: FullWorkItem,
     subscribe: Option<mpsc::Sender<(TaskId, Arc<TaskBoundResponse>)>>,
@@ -238,8 +238,6 @@ where
 async fn handle_submit_task(
     HandleSubmitTaskEnv {
         parent,
-        containerpool,
-
         inpath,
         mut item,
         subscribe,
@@ -271,7 +269,7 @@ async fn handle_submit_task(
             });
             let res = {
                 trace!("acquire container...");
-                let containername = containerpool.get().await;
+                let containername = parent.container_pool.get().await;
                 trace!("start build in container {}", *containername);
                 let span =
                     span!(Level::ERROR, "handle_process", ?item.inner.args, ?item.inner.envs);
@@ -394,6 +392,103 @@ async fn handle_submit_task(
     hold2.notify_one();
 }
 
+impl Env {
+    pub async fn new(
+        store_path: Utf8PathBuf,
+        container_runner: String,
+        parallel_job_cnt: usize,
+    ) -> Self {
+        assert_ne!(parallel_job_cnt, 0);
+
+        std::fs::create_dir_all(&store_path).expect("unable to create store dir");
+        std::fs::create_dir_all(&store_path.join(CAFILE_SUBDIR_NAME))
+            .expect("unable to create store/.links dir");
+
+        // setup pools
+        let container_pool = Pool::<String>::default();
+
+        for _ in 0..parallel_job_cnt {
+            container_pool.push(format!("yzix-{}", random_name())).await;
+        }
+
+        let env = Env {
+            store_path,
+            container_runner,
+            container_pool,
+
+            cache_store_refs: std::sync::Mutex::new(store_refs::Cache::new(1000)),
+            store_locks: Default::default(),
+            store_cafiles_locks: Default::default(),
+            tasks: Default::default(),
+        };
+
+        trace!("ready");
+        env
+    }
+
+    pub async fn kill(&self, task_id: TaskId) -> bool {
+        use std::collections::btree_map::Entry;
+        match self.tasks.lock().await.entry(task_id) {
+            Entry::Occupied(occ) => {
+                let ent = occ.remove();
+                ent.handle.abort();
+                let _ = ent
+                    .logs
+                    .send(Arc::new(TaskBoundResponse::BuildError(
+                        yzix_core::BuildError::KilledByClient,
+                    )))
+                    .is_err();
+                true
+            }
+            Entry::Vacant(_) => false,
+        }
+    }
+
+    pub async fn submit_task(
+        self: Arc<Self>,
+        pre_item: yzix_core::WorkItem,
+        subscribe: Option<mpsc::Sender<(TaskId, Arc<TaskBoundResponse>)>>,
+    ) -> TaskId {
+        let item = block_in_place(|| FullWorkItem::new(pre_item, &self.store_path));
+        let inhash = item.inhash;
+        if let Some(apt) = self.tasks.lock().await.get(&inhash) {
+            if let Some(x) = subscribe {
+                tokio::spawn(handle_subscribe(inhash, apt.logs.subscribe(), x));
+            }
+            return inhash;
+            // we can't use an `else` block below because if we would do that,
+            // the lock taken above wouldn't be released before potentially
+            // `handle_submit_task` is entered, which would then deadlock.
+        }
+        let inpath = self
+            .store_path
+            .join(format!("{}{}", inhash, INPUT_REALISATION_DIR_POSTFIX));
+        let ex_outputs = in2_helpers::resolve_in2(inpath.as_std_path());
+        if !ex_outputs.is_empty() {
+            if let Some(x) = subscribe {
+                tokio::spawn(async move {
+                    let _ = x
+                        .send((
+                            inhash,
+                            Arc::new(TaskBoundResponse::BuildSuccess(ex_outputs)),
+                        ))
+                        .await
+                        .is_ok();
+                });
+            }
+        } else {
+            handle_submit_task(HandleSubmitTaskEnv {
+                parent: self,
+                inpath,
+                item,
+                subscribe,
+            })
+            .await;
+        }
+        inhash
+    }
+}
+
 pub async fn main(
     Args {
         container_runner,
@@ -402,30 +497,7 @@ pub async fn main(
         store_path,
     }: Args,
 ) {
-    assert_ne!(cpucnt, 0);
-
-    std::fs::create_dir_all(&store_path).expect("unable to create store dir");
-    std::fs::create_dir_all(&store_path.join(CAFILE_SUBDIR_NAME))
-        .expect("unable to create store/.links dir");
-
-    // setup pools
-    let containerpool = Pool::<String>::default();
-
-    for _ in 0..cpucnt {
-        containerpool.push(format!("yzix-{}", random_name())).await;
-    }
-
-    let env = Arc::new(Env {
-        store_path,
-        container_runner,
-
-        cache_store_refs: std::sync::Mutex::new(store_refs::Cache::new(1000)),
-        store_locks: Default::default(),
-        store_cafiles_locks: Default::default(),
-        tasks: Default::default(),
-    });
-
-    trace!("ready");
+    let env = Arc::new(Env::new(store_path, container_runner, cpucnt).await);
     use ControlMessage as Cm;
 
     // main loop
@@ -433,21 +505,7 @@ pub async fn main(
         trace!("received ctrlmsg: {}", req);
         match req {
             Cm::Kill { task_id, answ_chan } => {
-                use std::collections::btree_map::Entry;
-                let resp = match env.tasks.lock().await.entry(task_id) {
-                    Entry::Occupied(occ) => {
-                        let ent = occ.remove();
-                        ent.handle.abort();
-                        let _ = ent
-                            .logs
-                            .send(Arc::new(TaskBoundResponse::BuildError(
-                                yzix_core::BuildError::KilledByClient,
-                            )))
-                            .is_err();
-                        true
-                    }
-                    Entry::Vacant(_) => false,
-                };
+                let resp = env.kill(task_id).await;
                 let _ = answ_chan.send(resp).is_err();
             }
             Cm::SubmitTask {
@@ -455,46 +513,8 @@ pub async fn main(
                 subscribe,
                 answ_chan,
             } => {
-                let item = block_in_place(|| FullWorkItem::new(pre_item, &env.store_path));
-                let inhash = item.inhash;
-                if let Some(apt) = env.tasks.lock().await.get(&inhash) {
-                    if let Some(x) = subscribe {
-                        tokio::spawn(handle_subscribe(inhash, apt.logs.subscribe(), x));
-                    }
-                    let _ = answ_chan.send(inhash).is_err();
-                    // we can't use an `else` block below because if we would do that,
-                    // the lock taken above wouldn't be released before potentially
-                    // `handle_submit_task` is entered, which would then deadlock.
-                    continue;
-                }
-                let inpath = env
-                    .store_path
-                    .join(format!("{}{}", inhash, INPUT_REALISATION_DIR_POSTFIX));
-                let ex_outputs = in2_helpers::resolve_in2(inpath.as_std_path());
-                if !ex_outputs.is_empty() {
-                    if let Some(x) = subscribe {
-                        tokio::spawn(async move {
-                            let _ = x
-                                .send((
-                                    inhash,
-                                    Arc::new(TaskBoundResponse::BuildSuccess(ex_outputs)),
-                                ))
-                                .await
-                                .is_ok();
-                        });
-                    }
-                } else {
-                    handle_submit_task(HandleSubmitTaskEnv {
-                        parent: env.clone(),
-                        containerpool: containerpool.clone(),
-
-                        inpath,
-                        item,
-                        subscribe,
-                    })
-                    .await;
-                }
-                let _ = answ_chan.send(inhash).is_err();
+                let resp = env.clone().submit_task(pre_item, subscribe).await;
+                let _ = answ_chan.send(resp).is_err();
             }
             Cm::OnRegular(xregu) => {
                 match xregu {

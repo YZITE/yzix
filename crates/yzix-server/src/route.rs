@@ -428,7 +428,7 @@ pub async fn handle_client(
                     .map_err(Into::into);
             }
             j.remove(0);
-            if j.first() == Some(&"store") && j.get(2) == Some(&"thintree") && j.get(3) == None {
+            if j.first() == Some(&"store") && j.get(2) == Some(&"thintree") && j.get(3).is_none() {
                 let j_ = j.get(1).unwrap().to_string();
                 drop(j);
                 handle_store_thintree(ctrl_reqs, h_parts.method, j_, h_parts.headers, h_body).await
