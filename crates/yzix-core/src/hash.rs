@@ -1,31 +1,14 @@
-use base64::engine::fast_portable::{FastPortable, FastPortableConfig};
 use blake2::{digest::consts::U32, Blake2b, Digest as _};
 use core::{cmp, convert, fmt, marker::PhantomData};
-use once_cell::sync::Lazy;
+use yzb64::{base64, B64_ENGINE};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Hash(pub [u8; 32]);
 
-static B64_ALPHABET: Lazy<base64::alphabet::Alphabet> = Lazy::new(|| {
-    // base64, like URL_SAFE, but '-' is replaced with '+' for better interaction
-    // with shell programs, which don't like file names which start with '-'
-    base64::alphabet::Alphabet::from_str(
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+_",
-    )
-    .unwrap()
-});
-
-static B64_ENGINE: Lazy<FastPortable> = Lazy::new(|| {
-    FastPortable::from(
-        &B64_ALPHABET,
-        FastPortableConfig::new().with_encode_padding(false),
-    )
-});
-
 impl fmt::Display for Hash {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&base64::encode_engine(self.0, &*B64_ENGINE))
+        base64::display::Base64Display::from(&self.0, &*B64_ENGINE).fmt(f)
     }
 }
 

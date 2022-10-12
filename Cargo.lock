@@ -1729,6 +1729,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "yzb64"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2fcbb8a264fd63a6dfe4532b0c1b039d5c4bdc2548d83a7af43f28870ef3f5b2"
+dependencies = [
+ "base64 0.20.0-alpha.1",
+ "once_cell",
+]
+
+[[package]]
 name = "yzix-client"
 version = "0.2.0"
 dependencies = [
@@ -1743,7 +1753,6 @@ dependencies = [
 name = "yzix-core"
 version = "0.1.0"
 dependencies = [
- "base64 0.20.0-alpha.1",
  "blake2",
  "camino",
  "digest",
@@ -1756,6 +1765,7 @@ dependencies = [
  "serde_test",
  "thiserror",
  "xattr",
+ "yzb64",
 ]
 
 [[package]]
