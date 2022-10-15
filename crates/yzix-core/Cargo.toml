@@ -24,6 +24,10 @@ default-features = false
 version = "1.0"
 features = ["derive"]
 
+[dependencies.visit-bytes]
+version = "0.1"
+features = ["camino"]
+
 [target.'cfg(unix)'.dependencies]
 xattr = "0.2"
 

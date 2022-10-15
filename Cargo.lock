@@ -1515,6 +1515,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
+name = "visit-bytes"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8fb4b65dbf59e159697f542a83968c635985ff4d6d318a8e657f9bea71455599"
+dependencies = [
+ "camino",
+]
+
+[[package]]
 name = "walkdir"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1764,6 +1773,7 @@ dependencies = [
  "serde_json",
  "serde_test",
  "thiserror",
+ "visit-bytes",
  "xattr",
  "yzb64",
 ]
