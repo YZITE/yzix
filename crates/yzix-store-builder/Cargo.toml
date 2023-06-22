@@ -6,28 +6,28 @@ edition = "2021"
 license = "Apache-2.0 WITH LLVM-exception"
 
 [dependencies]
-async-channel = "1.6"
-camino = "1.0"
-oci-spec = "0.5"
+async-channel = "1.8"
+camino = "1.1"
+oci-spec = "0.6"
 rand = "0.8"
 serde = "1.0"
 serde_json = "1.0"
 store-ref-scanner = "0.1"
-tempfile = "3.3"
+tempfile = "3.6"
 thiserror = "1.0"
 tracing = "0.1"
 tracing-futures = "0.2"
 
 [dependencies.async-compression]
-version = "0.3"
+version = "0.4"
 features = ["tokio", "zstd"]
 
 [dependencies.lru]
-version = "0.7"
+version = "0.10"
 default-features = false
 
 [dependencies.tokio]
-version = "1.20"
+version = "1.28"
 features = [
   "fs",
   "io-util",

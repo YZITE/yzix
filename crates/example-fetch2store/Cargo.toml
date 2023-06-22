@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-camino = "1.0"
+camino = "1.1"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 
 [dependencies.clap]
-version = "3.1"
+version = "4.3"
 features = ["derive"]
 
 [dependencies.reqwest]
@@ -18,7 +18,7 @@ default-features = false
 features = ["rustls-tls"]
 
 [dependencies.tokio]
-version = "1.20"
+version = "1.28"
 features = [
   "fs",
   "io-util",

@@ -42,8 +42,9 @@ async fn main() {
         if args.next().is_some() || arg == "--help" {
             inv_invoc();
         }
-        match toml::de::from_slice(
-            &std::fs::read(arg).expect("unable to read supplied config file"),
+        match toml::from_str(
+            &String::from_utf8(std::fs::read(arg).expect("unable to read supplied config file"))
+                .expect("config contains invalid UTF-8"),
         ) {
             Ok(x) => x,
             Err(e) => {

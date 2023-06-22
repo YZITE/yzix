@@ -8,6 +8,7 @@
 )]
 
 pub use camino::{Utf8Path, Utf8PathBuf};
+use core::num::NonZeroUsize;
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -150,7 +151,9 @@ impl Env {
             container_runner,
             container_pool,
 
-            cache_store_refs: std::sync::Mutex::new(store_refs::Cache::new(1000)),
+            cache_store_refs: std::sync::Mutex::new(store_refs::Cache::new(
+                NonZeroUsize::new(1000).unwrap(),
+            )),
             store_locks: Default::default(),
             store_cafiles_locks: Default::default(),
             tasks: Default::default(),

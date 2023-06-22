@@ -5,10 +5,10 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
-camino = "1.0"
+camino = "1.1"
 tracing = "0.1"
 tracing-subscriber = "0.3"
-indoc = "1.0"
+indoc = "2.0"
 
 [dependencies.reqwest]
 version = "0.11"
@@ -16,7 +16,7 @@ default-features = false
 features = ["rustls-tls"]
 
 [dependencies.tokio]
-version = "1.20"
+version = "1.28"
 features = [
   "fs",
   "io-util",

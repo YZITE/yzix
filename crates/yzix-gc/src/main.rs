@@ -2,6 +2,7 @@
 //! otherwise it would be unable to get a complete root list.
 
 use camino::{Utf8Path, Utf8PathBuf};
+use core::num::NonZeroUsize;
 use std::collections::BTreeSet;
 use std::io::ErrorKind as Ek;
 use tracing::{debug, error, info, span, trace, warn, Level};
@@ -65,8 +66,11 @@ impl LivePaths {
                 continue;
             }
 
-            let trg = match trg.to_str() {
-                Some(x) => Utf8PathBuf::from(path_clean::clean(x)),
+            let trg = match trg
+                .to_str()
+                .and_then(|x| Utf8PathBuf::try_from(path_clean::clean(x)).ok())
+            {
+                Some(x) => x,
                 None => {
                     warn!("unable to convert target to UTF-8 string, ignoring");
                     continue;
@@ -255,7 +259,7 @@ fn main() -> std::io::Result<()> {
     info!("determine closure ...");
     {
         use yzix_store_builder::store_refs;
-        let mut cache = store_refs::Cache::new(10000);
+        let mut cache = store_refs::Cache::new(NonZeroUsize::new(10000).unwrap());
         store_refs::determine_store_closure(&lp.store_path, &mut cache, &mut lp.lpi);
     }
 

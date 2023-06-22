@@ -8,7 +8,7 @@ pub struct Hash(pub [u8; 32]);
 impl fmt::Display for Hash {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        base64::display::Base64Display::from(&self.0, &*B64_ENGINE).fmt(f)
+        base64::display::Base64Display::new(&self.0, &*B64_ENGINE).fmt(f)
     }
 }
 
@@ -23,11 +23,15 @@ impl std::str::FromStr for Hash {
     type Err = base64::DecodeError;
     #[inline]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(
-            base64::decode_engine(s, &*B64_ENGINE)?
-                .try_into()
-                .map_err(|_| base64::DecodeError::InvalidLength)?,
-        ))
+        let mut x = [0u8; 33];
+        use base64::Engine;
+        B64_ENGINE
+            .decode_slice(s, &mut x[..])
+            .map_err(|_| base64::DecodeError::InvalidLength)?;
+        assert_eq!(x[32], 0);
+        let mut y = [0u8; 32];
+        y.copy_from_slice(&x[..32]);
+        Ok(Hash(y))
     }
 }
 
