@@ -6,14 +6,14 @@ edition = "2021"
 license = "Apache-2.0 WITH LLVM-exception"
 
 [dependencies]
-async-channel = "1.8"
+async-channel = "1.9"
 camino = "1.1"
 oci-spec = "0.6"
 rand = "0.8"
 serde = "1.0"
 serde_json = "1.0"
 store-ref-scanner = "0.1"
-tempfile = "3.6"
+tempfile = "3.8"
 thiserror = "1.0"
 tracing = "0.1"
 tracing-futures = "0.2"
@@ -23,11 +23,11 @@ version = "0.4"
 features = ["tokio", "zstd"]
 
 [dependencies.lru]
-version = "0.10"
+version = "0.11"
 default-features = false
 
 [dependencies.tokio]
-version = "1.28"
+version = "1.32"
 features = [
   "fs",
   "io-util",
