@@ -24,8 +24,6 @@ pub use hash::{Hash as StoreHash, TaggedHash};
 mod ser_trait;
 pub use ser_trait::{Serialize, Update as SerUpdate};
 
-pub use visit_bytes;
-
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, thiserror::Error)]
 pub enum BuildError {
     #[error("command was killed by client")]

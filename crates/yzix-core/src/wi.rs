@@ -78,13 +78,13 @@ impl crate::Serialize for WorkItem {
     }
 }
 
-impl crate::visit_bytes::Element for WorkItem {
-    fn accept<V: crate::visit_bytes::Visitor>(&self, visitor: &mut V) {
+impl visit_bytes::Element for WorkItem {
+    fn accept<V: visit_bytes::Visitor>(&self, visitor: &mut V) {
         self.args.iter().for_each(|x| x.accept(visitor));
         self.envs.values().for_each(|x| x.accept(visitor));
         self.files.values().for_each(|x| x.accept(visitor));
     }
-    fn accept_mut<V: crate::visit_bytes::VisitorMut>(&mut self, visitor: &mut V) {
+    fn accept_mut<V: visit_bytes::VisitorMut>(&mut self, visitor: &mut V) {
         self.args.iter_mut().for_each(|x| x.accept_mut(visitor));
         self.envs.values_mut().for_each(|x| x.accept_mut(visitor));
         self.files.values_mut().for_each(|x| x.accept_mut(visitor));

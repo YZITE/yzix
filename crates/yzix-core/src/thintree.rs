@@ -4,12 +4,13 @@
 
 use crate::store_utils::{mk_mapef, mk_reftime, set_perms_to_mode};
 use crate::{
-    visit_bytes as yvb, BaseName, Regular, RegularFlags, StoreError as Error,
+    BaseName, Regular, RegularFlags, StoreError as Error,
     StoreErrorKind as ErrorKind, TaggedHash,
 };
 use camino::Utf8PathBuf;
 use std::path::{Path, PathBuf};
 use std::{fmt, fs};
+use visit_bytes as yvb;
 
 /// sort-of emulation of NAR, but omits the contents of most non-self-referential `Regular` entries,
 /// and instead just saves the hash of files, which get hard-linked on realisation.

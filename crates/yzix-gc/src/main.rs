@@ -7,7 +7,8 @@ use std::collections::BTreeSet;
 use std::io::ErrorKind as Ek;
 use tracing::{debug, error, info, span, trace, warn, Level};
 use walkdir::WalkDir;
-use yzix_core::{visit_bytes as yvb, Regular, StoreHash, TaggedHash, ThinTree};
+use visit_bytes as yvb;
+use yzix_core::{Regular, StoreHash, TaggedHash, ThinTree};
 
 #[derive(Debug, clap::Parser)]
 struct Args {

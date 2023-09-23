@@ -1,7 +1,8 @@
 use crate::store_utils::{mk_mapef, mk_reftime, set_perms_to_mode};
-use crate::{visit_bytes as yvb, StoreError as Error};
+use crate::StoreError as Error;
 use std::fs;
 use std::path::Path;
+use visit_bytes as yvb;
 
 /// A regular file
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]

@@ -6,11 +6,12 @@ edition = "2021"
 license = "Apache-2.0 WITH LLVM-exception"
 
 [dependencies]
-camino = "1.1"
+camino.workspace = true
 fs2 = "0.4"
 path-clean = "1.0"
-tracing = "0.1"
+tracing.workspace = true
 tracing-subscriber = "0.3"
+visit-bytes.workspace = true
 walkdir = "2.4"
 
 [dependencies.clap]

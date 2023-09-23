@@ -4,8 +4,9 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::{marker::Unpin, mem::drop, path::Path, sync::Arc};
 use tokio::sync::broadcast::{self, Receiver, Sender};
 use tracing::trace;
+use visit_bytes::Element as _;
 use yzix_core::{
-    visit_bytes::Element as _, BuildError, DumpFlags, OutputName, Regular, StoreHash, TaggedHash,
+    BuildError, DumpFlags, OutputName, Regular, StoreHash, TaggedHash,
     ThinTree,
 };
 

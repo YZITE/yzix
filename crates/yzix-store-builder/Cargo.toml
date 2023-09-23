@@ -10,13 +10,14 @@ async-channel = "1.9"
 camino = "1.1"
 oci-spec = "0.6"
 rand = "0.8"
-serde = "1.0"
+serde.workspace = true
 serde_json = "1.0"
 store-ref-scanner = "0.1"
 tempfile = "3.8"
 thiserror = "1.0"
-tracing = "0.1"
+tracing.workspace = true
 tracing-futures = "0.2"
+visit-bytes.workspace = true
 
 [dependencies.async-compression]
 version = "0.4"

@@ -15,7 +15,7 @@ impl FullWorkItem {
             spec: &stspec,
             refs: Default::default(),
         };
-        yzix_core::visit_bytes::Element::accept(&inner, &mut e);
+        visit_bytes::Element::accept(&inner, &mut e);
         Self {
             inhash,
             refs: e.refs,

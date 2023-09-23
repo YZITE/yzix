@@ -2036,6 +2036,7 @@ dependencies = [
  "path-clean",
  "tracing",
  "tracing-subscriber",
+ "visit-bytes",
  "walkdir",
  "yzix-core",
  "yzix-store-builder",
@@ -2078,6 +2079,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-futures",
+ "visit-bytes",
  "yzix-core",
 ]
 

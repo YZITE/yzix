@@ -3,7 +3,8 @@ use lru::LruCache;
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 use store_ref_scanner::{StoreRefScanner, StoreSpec};
-use yzix_core::{visit_bytes as yvb, TaggedHash, ThinTree};
+use visit_bytes as yvb;
+use yzix_core::{TaggedHash, ThinTree};
 
 pub struct Extract<'a, T> {
     pub spec: &'a StoreSpec<'a>,
