@@ -1,4 +1,4 @@
-pub use camino::{Utf8Path, Utf8PathBuf};
+pub use camino::Utf8PathBuf;
 use std::collections::BTreeMap;
 use std::mem::drop;
 use std::sync::Arc;

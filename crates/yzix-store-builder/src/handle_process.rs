@@ -1,8 +1,9 @@
 use super::TaskBoundResponse;
 use camino::Utf8Path;
+use core::future::Future;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::{marker::Unpin, mem::drop, path::Path, sync::Arc};
-use tokio::sync::broadcast::{self, Receiver, Sender};
+use tokio::sync::broadcast::Sender;
 use tracing::trace;
 use visit_bytes::Element as _;
 use yzix_core::{
@@ -10,55 +11,120 @@ use yzix_core::{
     ThinTree,
 };
 
-async fn handle_logging_to_intermed<T: tokio::io::AsyncRead + Unpin>(
-    log: Sender<String>,
-    pipe: T,
-) -> std::io::Result<()> {
-    use tokio::io::{AsyncBufReadExt, BufReader};
-    let mut stream = BufReader::new(pipe).lines();
-    while let Some(content) = stream.next_line().await? {
-        if log.send(content).is_err() {
-            break;
+struct LogFromPipe<T> {
+    stream: tokio::io::Lines<tokio::io::BufReader<T>>,
+}
+
+impl<T: tokio::io::AsyncRead + Unpin> LogFromPipe<T> {
+    #[inline]
+    fn new(pipe: T) -> Self {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        Self {
+            stream: BufReader::new(pipe).lines(),
         }
     }
 
-    Ok(())
+    // note: this is cancel-safe
+    #[inline]
+    fn recv(&mut self) -> impl Future<Output = std::io::Result<Option<String>>> + '_ {
+        self.stream.next_line()
+    }
 }
 
-async fn handle_logging_to_file(mut linp: Receiver<String>, loutp: &Path) -> std::io::Result<()> {
-    use tokio::io::AsyncWriteExt;
-    let mut fout = async_compression::tokio::write::ZstdEncoder::with_quality(
-        tokio::fs::File::create(loutp).await?,
-        async_compression::Level::Best,
-    );
-    let mut got_any_content = false;
-    while let Ok(mut content) = linp.recv().await {
-        content.push('\n');
-        got_any_content = true;
-        fout.write_all(content.as_bytes()).await?;
-    }
-    fout.flush().await?;
-    fout.shutdown().await?;
-
-    std::mem::drop(fout);
-    if !got_any_content {
-        trace!("log is empty -> remove");
-        tokio::fs::remove_file(loutp).await?;
-    }
-    Ok(())
+struct LogToFile<'p> {
+    loutp: &'p Path,
+    fout: Option<async_compression::tokio::write::ZstdEncoder<tokio::fs::File>>,
+    got_any_content: bool,
 }
 
-async fn handle_logging_to_global(
-    mut linp: Receiver<String>,
-    loutp: Sender<Arc<TaskBoundResponse>>,
-) {
-    while let Ok(content) = linp.recv().await {
-        if loutp
-            .send(Arc::new(TaskBoundResponse::Log(content)))
-            .is_err()
-        {
-            break;
+impl<'p> LogToFile<'p> {
+    async fn try_new(loutp: &'p Path) -> std::io::Result<Self> {
+        let fout = async_compression::tokio::write::ZstdEncoder::with_quality(
+            tokio::fs::File::create(loutp).await?,
+            async_compression::Level::Best,
+        );
+        Ok(Self {
+            loutp,
+            fout: Some(fout),
+            got_any_content: false,
+        })
+    }
+
+    #[inline]
+    fn process_line<'a>(&'a mut self, content_wnl: &'a str) -> impl Future<Output = std::io::Result<()>> + 'a {
+        use tokio::io::AsyncWriteExt;
+        self.got_any_content = true;
+        self.fout.as_mut().unwrap().write_all(content_wnl.as_bytes())
+    }
+
+    async fn shutdown(mut self) -> std::io::Result<()> {
+        use tokio::io::AsyncWriteExt;
+        if let Some(mut fout) = self.fout.take() {
+            fout.flush().await?;
+            fout.shutdown().await?;
         }
+
+        if !self.got_any_content {
+            trace!("log is empty -> remove");
+            tokio::fs::remove_file(self.loutp).await?;
+        }
+        Ok(())
+    }
+}
+
+struct LogForwarder<'p> {
+    stdout2log: LogFromPipe<tokio::process::ChildStdout>,
+    stderr2log: LogFromPipe<tokio::process::ChildStderr>,
+
+    log2file: LogToFile<'p>,
+    log2global: Sender<Arc<TaskBoundResponse>>,
+}
+
+impl<'p> LogForwarder<'p> {
+    async fn try_new(child: &mut tokio::process::Child, file_loutp: &'p Path, glb_loutp: Sender<Arc<TaskBoundResponse>>) -> std::io::Result<Self> {
+        let stdout2log = LogFromPipe::new(child.stdout.take().unwrap());
+        let stderr2log = LogFromPipe::new(child.stderr.take().unwrap());
+
+        let log2file = LogToFile::try_new(file_loutp).await?;
+
+        Ok(Self {
+            stdout2log,
+            stderr2log,
+            log2file,
+            log2global: glb_loutp,
+        })
+    }
+
+    async fn main_loop(self) -> std::io::Result<()> {
+        let LogForwarder { mut stdout2log, mut stderr2log, mut log2file, log2global } = self;
+
+        let res = loop {
+            let content = tokio::select! {
+                x = stdout2log.recv() => x,
+                x = stderr2log.recv() => x,
+            };
+            let mut content = match content {
+                Err(e) => break Err(e),
+                Ok(None) => break Ok(()),
+                Ok(Some(x)) => x,
+            };
+
+            content.push('\n');
+            let a = log2file.process_line(&content).await;
+            content.pop();
+            content.shrink_to_fit();
+            let b = log2global.send(Arc::new(TaskBoundResponse::Log(content)));
+
+            if a.is_err() {
+                break a;
+            }
+
+            if b.is_err() {
+                break Ok(());
+            }
+        };
+        log2file.shutdown().await?;
+        res
     }
 }
 
@@ -329,14 +395,9 @@ pub async fn handle_process(
         .current_dir(workdir.path())
         .kill_on_drop(true)
         .spawn()?;
-    let (logfwds, logfwdr) = broadcast::channel(1000);
-    let z = handle_logging_to_global(logfwdr, logs);
-    let y = handle_logging_to_file(logfwds.subscribe(), logoutput.as_std_path());
-    let x = handle_logging_to_intermed(logfwds.clone(), ch.stderr.take().unwrap());
-    let w = handle_logging_to_intermed(logfwds, ch.stdout.take().unwrap());
+    let logfwd = LogForwarder::try_new(&mut ch, logoutput.as_std_path(), logs).await?;
     trace!("runner + logfwd started");
-
-    let (_, _, y, _, exs) = tokio::join!(w, x, y, z, ch.wait());
+    let (y, exs) = tokio::join!(logfwd.main_loop(), ch.wait());
     let (_, exs) = (y?, exs?);
 
     if exs.success() {
