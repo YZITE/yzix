@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::sync::Arc;
+use tracing::Instrument;
 use yzix_store_builder::{Utf8Path, Utf8PathBuf};
 
 #[derive(Debug, serde::Deserialize)]
@@ -82,8 +83,6 @@ async fn main() {
             .init();
     }
 
-    use hyper::service::{make_service_fn, service_fn};
-
     let sbenv = Arc::new(
         yzix_store_builder::Env::new(
             config.store_path.clone(),
@@ -92,24 +91,65 @@ async fn main() {
         )
         .await,
     );
+
+    let resolver = hyper_staticfile::Resolver::new(&config.store_path);
     let sbenv2 = sbenv.clone();
     let config2 = config.clone();
 
-    let make_service = make_service_fn(move |_conn| {
-        let config2 = config2.clone();
-        let sbenv2 = sbenv2.clone();
-        async move {
-            Ok::<_, core::convert::Infallible>(service_fn(move |req| {
-                route::handle_client(config2.clone(), sbenv2.clone(), req)
-            }))
+    // the following is based upon https://github.com/hyperium/hyper-util/blob/df55abac42d0cc1e1577f771d8a1fc91f4bcd0dd/examples/server_graceful.rs
+
+    let listener = match tokio::net::TcpListener::bind(&config.socket_bind).await {
+        Err(e) => {
+            tracing::error!("unable to bind to {} : {}", &config.socket_bind, e);
+            std::process::exit(1)
         }
-    });
+        Ok(x) => x,
+    };
+    let server = hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new());
+    let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+    let mut ctrl_c = std::pin::pin!(tokio::signal::ctrl_c());
 
-    let jh_httpserver = hyper::Server::bind(&config.socket_bind)
-        .serve(make_service)
-        .with_graceful_shutdown(async { tokio::signal::ctrl_c().await.unwrap() });
+    loop {
+        tokio::select! {
+            conn = listener.accept() => {
+                let (stream, peer_addr) = match conn {
+                    Ok(conn) => conn,
+                    Err(e) => {
+                        tracing::warn!("accept failed with {}", e);
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        continue;
+                    }
+                };
+                let config2 = config2.clone();
+                let sbenv2 = sbenv2.clone();
+                let peer_addr2 = peer_addr.to_string();
+                let resolver2 = resolver.clone();
 
-    if let Err(e) = jh_httpserver.await {
-        eprintln!("yzix-server/HTTP: {}", e);
+                let stream = hyper_util::rt::TokioIo::new(Box::pin(stream));
+                let conn = server.serve_connection(stream, hyper::service::service_fn(move |req| {
+                    route::handle_client(config2.clone(), sbenv2.clone(), resolver2.clone(), req).instrument(tracing::info_span!("connection", peer_addr2))
+                }));
+                let conn = graceful.watch(conn);
+
+                tokio::spawn(async move {
+                    if let Err(e) = conn.await {
+                        tracing::error!("connection error: {}", e);
+                    }
+                    tracing::warn!("connection dropped: {}", peer_addr);
+                });
+            },
+
+            _ = ctrl_c.as_mut() => {
+                drop(listener);
+                break;
+            }
+        }
+    }
+
+    tokio::select! {
+        _ = graceful.shutdown() => {},
+        _ = tokio::time::sleep(std::time::Duration::from_secs(10)) => {
+            tracing::error!("waited 10 seconds for graceful shutdown, aborting...");
+        }
     }
 }

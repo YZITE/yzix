@@ -1,19 +1,93 @@
 #![cfg_attr(rustfmt, rustfmt::skip::macros(serde_json::json))]
 
+use bytes::Bytes;
 use core::mem::drop;
-use hyper::{body::HttpBody as _, header, Body, Method, Request, Response, StatusCode};
+use core::pin::Pin;
+use core::task::Poll;
+use futures_util::Stream;
+use http_body::{Body as BodyTrait, Frame};
+use http_body_util::{BodyExt as _, Full};
+use hyper::{header, body::Incoming, Method, Request, Response, StatusCode};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::task::spawn_blocking;
 use yzix_core::{BuildError, TaggedHash, ThinTree};
 use yzix_store_builder::{Env as SbEnv, OnObject as OnObj, TaskBoundResponse};
 
+pub enum Body {
+    Full(Full<Bytes>),
+    Static(hyper_staticfile::Body),
+    Stream(Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send + Unpin + 'static>),
+}
+
+impl Body {
+    #[inline]
+    pub fn empty() -> Self {
+        Self::Static(hyper_staticfile::Body::Empty)
+    }
+
+    #[inline]
+    pub fn from_stream<S: Stream<Item = Result<Bytes, std::io::Error>> + Send + Unpin + 'static>(s: S) -> Self {
+        Self::Stream(Box::new(s) as Box<_>)
+    }
+}
+
+impl BodyTrait for Body {
+    type Data = Bytes;
+    type Error = std::io::Error;
+
+    #[inline]
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> Poll<Option<std::io::Result<Frame<Bytes>>>> {
+        match *self {
+            Body::Full(ref mut f) => {
+                match BodyTrait::poll_frame(Pin::new(f), cx) {
+                    Poll::Pending => Poll::Pending,
+                    Poll::Ready(None) => Poll::Ready(None),
+                    Poll::Ready(Some(Ok(x))) => Poll::Ready(Some(Ok(x))),
+                    Poll::Ready(Some(Err(e))) => match e {},
+                }
+            },
+            Body::Static(ref mut s) => BodyTrait::poll_frame(Pin::new(s), cx),
+            Body::Stream(ref mut s) => {
+                let opt = std::task::ready!(Pin::new(s).poll_next(cx));
+                Poll::Ready(opt.map(|res| res.map(Frame::data)))
+            }
+        }
+    }
+
+    #[inline]
+    fn is_end_stream(&self) -> bool {
+        match self {
+            Body::Full(f) => f.is_end_stream(),
+            Body::Static(s) => s.is_end_stream(),
+            Body::Stream(_) => false,
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> http_body::SizeHint {
+        match self {
+            Body::Full(f) => f.size_hint(),
+            Body::Static(s) => s.size_hint(),
+            Body::Stream(_) => http_body::SizeHint::default(),
+        }
+    }
+}
+
+impl From<String> for Body {
+    #[inline]
+    fn from(x: String) -> Self {
+        Body::Full(Full::new(x.into()))
+    }
+}
+
 fn resp_aborted() -> Result<Response<Body>, hyper::http::Error> {
-    let (chan, body) = Body::channel();
-    chan.abort();
     Response::builder()
         .status(StatusCode::INTERNAL_SERVER_ERROR)
-        .body(body)
+        .body(Body::empty())
 }
 
 async fn handle_store_thintree(
@@ -22,7 +96,7 @@ async fn handle_store_thintree(
     h_method: Method,
     treeid: String,
     h_headers: header::HeaderMap,
-    h_body: Body,
+    h_body: Incoming,
 ) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     // this needs to handle uploads, downloads, etc.
     let hash: TaggedHash<_> = match treeid.parse() {
@@ -39,7 +113,7 @@ async fn handle_store_thintree(
                         }],
                     })
                     .to_string()
-                    .into(),
+                    .into()
                 )
                 .map_err(Into::into)
         }
@@ -96,7 +170,7 @@ async fn handle_store_thintree(
                     .body(Body::empty())
                     .map_err(Into::into);
             }
-            let bbytes = hyper::body::to_bytes(h_body).await?;
+            let bbytes = h_body.collect().await?.to_bytes();
             let data: ThinTree = match serde_json::from_slice(&bbytes[..]) {
                 Ok(x) => x,
                 Err(e) => {
@@ -152,7 +226,7 @@ async fn handle_realisations(
     _h_method: Method,
     path: Vec<&str>,
     _h_headers: header::HeaderMap,
-    _h_body: Body,
+    _h_body: Incoming,
 ) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     let mut path = path.into_iter();
     let p = if let Some(x) = path.next() {
@@ -202,8 +276,10 @@ pub async fn handle_client(
     config: Arc<crate::ServerConfig>,
     // store-builder environment
     sbenv: Arc<yzix_store_builder::Env>,
+    // resolver for static files
+    resolver: hyper_staticfile::Resolver,
     // the incoming request
-    http_req: Request<Body>,
+    http_req: Request<Incoming>,
 ) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     use serde_json::json;
     let (h_parts, h_body) = http_req.into_parts();
@@ -295,7 +371,7 @@ pub async fn handle_client(
                     .body(Body::empty())
                     .map_err(Into::into);
             }
-            let bbytes = hyper::body::to_bytes(h_body).await?;
+            let bbytes = h_body.collect().await?.to_bytes();
             let item: yzix_core::WorkItem = match serde_json::from_slice(&bbytes[..]) {
                 Ok(x) => x,
                 Err(e) => {
@@ -349,24 +425,12 @@ pub async fn handle_client(
                     .to_string(),
                     TaskBoundResponse::Log(s) => format!(".{}\n", s),
                 })
-                .map(|i| Ok(hyper::body::Bytes::copy_from_slice(i.as_bytes())));
+                .map(|i| Ok(Bytes::copy_from_slice(i.as_bytes())));
 
             Response::builder()
                 .status(StatusCode::ACCEPTED)
                 .header(header::CONTENT_TYPE, "text/x-yzix-task-log")
-                .body(
-                    (Box::new(bstream)
-                        as Box<
-                            dyn futures_util::Stream<
-                                    Item = Result<
-                                        hyper::body::Bytes,
-                                        Box<dyn std::error::Error + Send + Sync + 'static>,
-                                    >,
-                                > + Send
-                                + 'static,
-                        >)
-                        .into(),
-                )
+                .body(Body::from_stream(bstream))
                 .map_err(Into::into)
         }
 
@@ -395,10 +459,11 @@ pub async fn handle_client(
                     .body(Body::empty())
                     .map_err(Into::into)
             } else {
-                let resolved = hyper_staticfile::resolve_path(config.store_path.clone(), i).await?;
+                let resolved = resolver.resolve_path(i, hyper_staticfile::AcceptEncoding::none()).await?;
 
                 let is_exe = match &resolved {
-                    hyper_staticfile::ResolveResult::Found(_, meta, _) => {
+                    hyper_staticfile::ResolveResult::Found(fres) => {
+                        let meta = fres.handle.metadata().await?;
                         std::os::unix::fs::PermissionsExt::mode(&meta.permissions()) & 0o111 != 0
                     }
                     _ => false,
@@ -408,7 +473,8 @@ pub async fn handle_client(
                     .request_parts(&h_parts.method, &h_parts.uri, &h_parts.headers)
                     // cache response for 7 days
                     .cache_headers(Some(604800))
-                    .build(resolved)?;
+                    .build(resolved)?
+                    .map(Body::Static);
 
                 if is_exe {
                     // we need to add the `X-Executable` header if the file is executable
