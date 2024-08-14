@@ -9,7 +9,7 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 
 [dependencies.clap]
-version = "4.4"
+version = "4.5"
 features = ["derive"]
 
 [dependencies.reqwest]
@@ -18,7 +18,7 @@ default-features = false
 features = ["rustls-tls"]
 
 [dependencies.tokio]
-version = "1.32"
+version = "1.39"
 features = [
   "fs",
   "io-util",

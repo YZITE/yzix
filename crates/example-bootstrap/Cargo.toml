@@ -16,7 +16,7 @@ default-features = false
 features = ["rustls-tls"]
 
 [dependencies.tokio]
-version = "1.32"
+version = "1.39"
 features = [
   "fs",
   "io-util",

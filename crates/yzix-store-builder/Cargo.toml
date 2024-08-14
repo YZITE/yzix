@@ -13,7 +13,7 @@ rand = "0.8"
 serde.workspace = true
 serde_json = "1.0"
 store-ref-scanner = "0.1"
-tempfile = "3.8"
+tempfile = "3.12"
 thiserror = "1.0"
 tracing.workspace = true
 tracing-futures = "0.2"
@@ -28,7 +28,7 @@ version = "0.11"
 default-features = false
 
 [dependencies.tokio]
-version = "1.32"
+version = "1.39"
 features = [
   "fs",
   "io-util",
