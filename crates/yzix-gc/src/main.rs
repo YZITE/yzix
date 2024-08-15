@@ -6,8 +6,8 @@ use core::num::NonZeroUsize;
 use std::collections::BTreeSet;
 use std::io::ErrorKind as Ek;
 use tracing::{debug, error, info, span, trace, warn, Level};
-use walkdir::WalkDir;
 use visit_bytes as yvb;
+use walkdir::WalkDir;
 use yzix_core::{Regular, StoreHash, TaggedHash, ThinTree};
 
 #[derive(Debug, clap::Parser)]

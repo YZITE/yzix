@@ -7,7 +7,7 @@ use core::task::Poll;
 use futures_util::Stream;
 use http_body::{Body as BodyTrait, Frame};
 use http_body_util::{BodyExt as _, Full};
-use hyper::{header, body::Incoming, Method, Request, Response, StatusCode};
+use hyper::{body::Incoming, header, Method, Request, Response, StatusCode};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::task::spawn_blocking;
@@ -27,7 +27,9 @@ impl Body {
     }
 
     #[inline]
-    pub fn from_stream<S: Stream<Item = Result<Bytes, std::io::Error>> + Send + Unpin + 'static>(s: S) -> Self {
+    pub fn from_stream<S: Stream<Item = Result<Bytes, std::io::Error>> + Send + Unpin + 'static>(
+        s: S,
+    ) -> Self {
         Self::Stream(Box::new(s) as Box<_>)
     }
 }
@@ -42,13 +44,11 @@ impl BodyTrait for Body {
         cx: &mut core::task::Context<'_>,
     ) -> Poll<Option<std::io::Result<Frame<Bytes>>>> {
         match *self {
-            Body::Full(ref mut f) => {
-                match BodyTrait::poll_frame(Pin::new(f), cx) {
-                    Poll::Pending => Poll::Pending,
-                    Poll::Ready(None) => Poll::Ready(None),
-                    Poll::Ready(Some(Ok(x))) => Poll::Ready(Some(Ok(x))),
-                    Poll::Ready(Some(Err(e))) => match e {},
-                }
+            Body::Full(ref mut f) => match BodyTrait::poll_frame(Pin::new(f), cx) {
+                Poll::Pending => Poll::Pending,
+                Poll::Ready(None) => Poll::Ready(None),
+                Poll::Ready(Some(Ok(x))) => Poll::Ready(Some(Ok(x))),
+                Poll::Ready(Some(Err(e))) => match e {},
             },
             Body::Static(ref mut s) => BodyTrait::poll_frame(Pin::new(s), cx),
             Body::Stream(ref mut s) => {
@@ -113,7 +113,7 @@ async fn handle_store_thintree(
                         }],
                     })
                     .to_string()
-                    .into()
+                    .into(),
                 )
                 .map_err(Into::into)
         }
@@ -459,7 +459,9 @@ pub async fn handle_client(
                     .body(Body::empty())
                     .map_err(Into::into)
             } else {
-                let resolved = resolver.resolve_path(i, hyper_staticfile::AcceptEncoding::none()).await?;
+                let resolved = resolver
+                    .resolve_path(i, hyper_staticfile::AcceptEncoding::none())
+                    .await?;
 
                 let is_exe = match &resolved {
                     hyper_staticfile::ResolveResult::Found(fres) => {

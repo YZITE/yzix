@@ -4,8 +4,7 @@
 
 use crate::store_utils::{mk_mapef, mk_reftime, set_perms_to_mode};
 use crate::{
-    BaseName, Regular, RegularFlags, StoreError as Error,
-    StoreErrorKind as ErrorKind, TaggedHash,
+    BaseName, Regular, RegularFlags, StoreError as Error, StoreErrorKind as ErrorKind, TaggedHash,
 };
 use camino::Utf8PathBuf;
 use std::path::{Path, PathBuf};

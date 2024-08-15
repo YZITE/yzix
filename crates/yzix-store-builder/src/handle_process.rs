@@ -6,10 +6,7 @@ use std::{marker::Unpin, mem::drop, path::Path, sync::Arc};
 use tokio::sync::broadcast::Sender;
 use tracing::trace;
 use visit_bytes::Element as _;
-use yzix_core::{
-    BuildError, DumpFlags, OutputName, Regular, StoreHash, TaggedHash,
-    ThinTree,
-};
+use yzix_core::{BuildError, DumpFlags, OutputName, Regular, StoreHash, TaggedHash, ThinTree};
 
 struct LogFromPipe<T> {
     stream: tokio::io::Lines<tokio::io::BufReader<T>>,
@@ -51,10 +48,16 @@ impl<'p> LogToFile<'p> {
     }
 
     #[inline]
-    fn process_line<'a>(&'a mut self, content_wnl: &'a str) -> impl Future<Output = std::io::Result<()>> + 'a {
+    fn process_line<'a>(
+        &'a mut self,
+        content_wnl: &'a str,
+    ) -> impl Future<Output = std::io::Result<()>> + 'a {
         use tokio::io::AsyncWriteExt;
         self.got_any_content = true;
-        self.fout.as_mut().unwrap().write_all(content_wnl.as_bytes())
+        self.fout
+            .as_mut()
+            .unwrap()
+            .write_all(content_wnl.as_bytes())
     }
 
     async fn shutdown(mut self) -> std::io::Result<()> {
@@ -81,7 +84,11 @@ struct LogForwarder<'p> {
 }
 
 impl<'p> LogForwarder<'p> {
-    async fn try_new(child: &mut tokio::process::Child, file_loutp: &'p Path, glb_loutp: Sender<Arc<TaskBoundResponse>>) -> std::io::Result<Self> {
+    async fn try_new(
+        child: &mut tokio::process::Child,
+        file_loutp: &'p Path,
+        glb_loutp: Sender<Arc<TaskBoundResponse>>,
+    ) -> std::io::Result<Self> {
         let stdout2log = LogFromPipe::new(child.stdout.take().unwrap());
         let stderr2log = LogFromPipe::new(child.stderr.take().unwrap());
 
@@ -96,7 +103,12 @@ impl<'p> LogForwarder<'p> {
     }
 
     async fn main_loop(self) -> std::io::Result<()> {
-        let LogForwarder { mut stdout2log, mut stderr2log, mut log2file, log2global } = self;
+        let LogForwarder {
+            mut stdout2log,
+            mut stderr2log,
+            mut log2file,
+            log2global,
+        } = self;
 
         let res = loop {
             let content = tokio::select! {
